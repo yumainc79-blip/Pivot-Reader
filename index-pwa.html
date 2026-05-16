@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#050505" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Pivot Reader</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="application-name" content="Pivot Reader" />
+
+
+  <!-- Librerie esterne: servono solo per leggere EPUB e PDF. Il file resta locale nel browser. -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: rgba(255, 255, 255, 0.075);
+      --panel-strong: rgba(255, 255, 255, 0.12);
+      --text: #f6f3ee;
+      --muted: rgba(246, 243, 238, 0.68);
+      --faint: rgba(246, 243, 238, 0.28);
+      --accent: #ff2f5f;
+      --accent-soft: rgba(255, 47, 95, 0.22);
+      --danger: #ff6b6b;
+      --radius: 24px;
+      --reader-font-size: clamp(52px, 17vw, 112px);
+      --reader-font-family: Georgia, 'Times New Roman', serif;
+      --pivot-x: 40%;
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      padding: 12px 16px;
+      transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+    }
+
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .app {
+      min-height: 100dvh;
+      background:
+        radial-gradient(circle at 50% 28%, rgba(255, 47, 95, 0.12), transparent 30%),
+        var(--bg);
+    }
+
+    .screen {
+      min-height: 100dvh;
+      display: none;
+      padding: max(22px, env(safe-area-inset-top)) 18px max(22px, env(safe-area-inset-bottom));
+    }
+
+    .screen.active { display: flex; }
+
+    .home {
+      align-items: center;
+      justify-content: center;
+    }
+
+    .home-card {
+      width: min(680px, 100%);
+      padding: 26px;
+      border-radius: 32px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.045));
+      border: 1px solid rgba(255,255,255,0.13);
+      box-shadow: 0 24px 90px rgba(0,0,0,0.42);
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: var(--accent-soft);
+      border: 1px solid rgba(255, 47, 95, 0.36);
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 22px;
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 8vw, 58px);
+      letter-spacing: -0.055em;
+      line-height: 0.98;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 14px 0 0;
+      font-size: 16px;
+    }
+
+    .upload-area {
+      margin-top: 28px;
+      border: 1px dashed rgba(255,255,255,0.22);
+      border-radius: 28px;
+      padding: 20px;
+      background: rgba(0,0,0,0.26);
+    }
+
+    .file-input {
+      width: 100%;
+      display: none;
+    }
+
+    .primary-btn {
+      width: 100%;
+      min-height: 58px;
+      background: var(--accent);
+      color: white;
+      border-color: transparent;
+      font-weight: 800;
+      font-size: 17px;
+      box-shadow: 0 16px 42px rgba(255, 47, 95, 0.22);
+    }
+
+    .secondary-btn {
+      width: 100%;
+      margin-top: 10px;
+      min-height: 52px;
+    }
+
+    .supported {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .pill {
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.11);
+      font-size: 13px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .setting-card {
+      padding: 14px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.055);
+      border: 1px solid rgba(255,255,255,0.09);
+    }
+
+    .setting-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .setting-value {
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    input[type='range'] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .note {
+      margin-top: 18px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .paste-box {
+      margin-top: 14px;
+      display: none;
+    }
+
+    .paste-box.active { display: block; }
+
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      resize: vertical;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.42);
+      color: var(--text);
+      padding: 14px;
+      line-height: 1.45;
+      outline: none;
+    }
+
+    .loading {
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .spinner {
+      width: 54px;
+      height: 54px;
+      border: 4px solid rgba(255,255,255,0.12);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 22px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading h2 {
+      margin: 0;
+      letter-spacing: -0.03em;
+      font-size: 28px;
+    }
+
+    .loading p {
+      color: var(--muted);
+      line-height: 1.45;
+      max-width: 420px;
+      margin: 12px auto 0;
+    }
+
+    .reader {
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .reader-stage {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at var(--pivot-x) 50%, rgba(255, 255, 255, 0.045), transparent 22%),
+        #000;
+    }
+
+    .center-line {
+      position: absolute;
+      left: var(--pivot-x);
+      transform: translateX(-50%);
+      width: 2px;
+      height: 54px;
+      background: linear-gradient(180deg, transparent, rgba(255,255,255,0.28), transparent);
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    .center-line.top { top: calc(50% - 118px); }
+    .center-line.bottom { top: calc(50% + 64px); }
+
+    .guide-horizontal {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(50% + 116px);
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .word-grid {
+      position: absolute;
+      left: var(--pivot-x);
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: baseline;
+      width: min(96vw, 1100px);
+      padding: 0 18px;
+      font-family: var(--reader-font-family);
+      font-size: var(--reader-font-size);
+      line-height: 1;
+      letter-spacing: 0.015em;
+      text-shadow: 0 2px 18px rgba(255,255,255,0.12);
+    }
+
+    .before {
+      text-align: right;
+      color: var(--text);
+      white-space: pre;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+
+    .pivot {
+      color: var(--accent);
+      white-space: pre;
+      text-shadow: 0 0 16px rgba(255, 47, 95, 0.42), 0 0 3px rgba(255,47,95,0.9);
+    }
+
+    .after {
+      text-align: left;
+      color: var(--text);
+      white-space: pre;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+
+    .reader-topbar {
+      position: fixed;
+      top: env(safe-area-inset-top);
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      z-index: 5;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+
+    .reader-title {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .icon-btn {
+      width: 46px;
+      height: 46px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      background: rgba(255,255,255,0.075);
+      backdrop-filter: blur(14px);
+    }
+
+    .reader-controls {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      z-index: 5;
+      padding: 14px;
+      border-radius: 28px;
+      background: rgba(18,18,18,0.82);
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 18px 70px rgba(0,0,0,0.6);
+      backdrop-filter: blur(18px);
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+
+    .reader.clean .reader-controls,
+    .reader.clean .reader-topbar {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .reader.clean .reader-controls { transform: translateY(18px); }
+    .reader.clean .reader-topbar { transform: translateY(-18px); }
+
+    .progress-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 54px 1fr 54px;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .play-btn {
+      width: 100%;
+      min-height: 54px;
+      font-weight: 900;
+      background: rgba(255,47,95,0.92);
+      border-color: transparent;
+    }
+
+    .wpm-row {
+      display: grid;
+      grid-template-columns: 48px 1fr 48px;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .small-btn {
+      width: 48px;
+      height: 44px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+    }
+
+    .status-line {
+      margin-top: 8px;
+      min-height: 18px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .error-box {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 18px;
+      color: #ffdada;
+      background: rgba(255, 107, 107, 0.12);
+      border: 1px solid rgba(255, 107, 107, 0.22);
+      display: none;
+      line-height: 1.4;
+      font-size: 14px;
+    }
+
+    .error-box.active { display: block; }
+
+    @media (min-width: 720px) {
+      .settings-grid { grid-template-columns: 1fr 1fr; }
+      .reader-controls {
+        width: min(620px, calc(100% - 24px));
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+      }
+      .reader.clean .reader-controls { transform: translateX(-50%) translateY(18px); }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="homeScreen" class="screen home active" aria-label="Caricamento file">
+      <div class="home-card">
+        <div class="logo-row">
+          <div class="logo">
+            <div class="logo-mark">r</div>
+            <div>
+              <h1>Pivot Reader</h1>
+              <p class="subtitle">Carica un EPUB, PDF o TXT. Leggi una parola alla volta su sfondo nero, con la lettera rossa centrata.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="upload-area">
+          <input id="fileInput" class="file-input" type="file" accept=".epub,.pdf,.txt,text/plain,application/epub+zip,application/pdf" />
+          <button id="chooseFileBtn" class="primary-btn" type="button">Carica EPUB / PDF / TXT</button>
+          <button id="togglePasteBtn" class="secondary-btn" type="button">Oppure incolla testo</button>
+
+          <div id="pasteBox" class="paste-box">
+            <textarea id="pasteText" placeholder="Incolla qui il testo da leggere..."></textarea>
+            <button id="startPastedBtn" class="secondary-btn" type="button">Avvia testo incollato</button>
+          </div>
+
+          <div class="supported" aria-label="Formati supportati">
+            <span class="pill">EPUB senza DRM</span>
+            <span class="pill">PDF testuale</span>
+            <span class="pill">TXT</span>
+            <span class="pill">lettura locale</span>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <div class="setting-card">
+            <div class="setting-head"><span>Velocità iniziale</span><span id="homeWpmValue" class="setting-value">400 WPM</span></div>
+            <input id="homeWpm" type="range" min="100" max="1200" value="400" step="25" />
+          </div>
+          <div class="setting-card">
+            <div class="setting-head"><span>Dimensione parola</span><span id="homeSizeValue" class="setting-value">50</span></div>
+            <input id="homeSize" type="range" min="42" max="128" value="50" step="2" />
+          </div>
+        </div>
+
+        <p class="note">Il file non viene caricato su server. L’estrazione avviene nel browser. I PDF scansionati o gli EPUB protetti da DRM non sono leggibili in questa versione.</p>
+        <div id="homeError" class="error-box"></div>
+      </div>
+    </section>
+
+    <section id="loadingScreen" class="screen loading" aria-label="Preparazione testo">
+      <div>
+        <div class="spinner" aria-hidden="true"></div>
+        <h2>Preparo il testo…</h2>
+        <p id="loadingText">Sto leggendo il file e separando le parole.</p>
+      </div>
+    </section>
+
+    <section id="readerScreen" class="screen reader" aria-label="Lettura rapida">
+      <div class="reader-stage" id="readerStage">
+        <div class="center-line top" aria-hidden="true"></div>
+        <div class="word-grid" id="wordGrid" aria-live="polite">
+          <span id="beforeText" class="before"></span><span id="pivotText" class="pivot"></span><span id="afterText" class="after"></span>
+        </div>
+        <div class="center-line bottom" aria-hidden="true"></div>
+        <div class="guide-horizontal" aria-hidden="true"></div>
+      </div>
+
+      <div class="reader-topbar">
+        <button id="backBtn" class="icon-btn" type="button" aria-label="Torna alla home">←</button>
+        <div id="readerTitle" class="reader-title">Nessun file</div>
+        <button id="settingsBtn" class="icon-btn" type="button" aria-label="Mostra o nascondi controlli">☰</button>
+      </div>
+
+      <div class="reader-controls" id="readerControls">
+        <div class="progress-row">
+          <span id="currentIndexLabel">0</span>
+          <input id="progressRange" type="range" min="0" max="0" value="0" step="1" aria-label="Progresso" />
+          <span id="totalIndexLabel">0</span>
+        </div>
+
+        <div class="control-row">
+          <button id="prevBtn" class="icon-btn" type="button" aria-label="Parola precedente">‹</button>
+          <button id="playBtn" class="play-btn" type="button">Play</button>
+          <button id="nextBtn" class="icon-btn" type="button" aria-label="Parola successiva">›</button>
+        </div>
+
+        <div class="wpm-row">
+          <button id="slowerBtn" class="small-btn" type="button" aria-label="Rallenta">−</button>
+          <input id="readerWpm" type="range" min="100" max="1200" value="400" step="25" aria-label="Velocità parole al minuto" />
+          <button id="fasterBtn" class="small-btn" type="button" aria-label="Accelera">+</button>
+        </div>
+        <div id="statusLine" class="status-line">400 WPM</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const $ = (id) => document.getElementById(id);
+
+      const els = {
+        homeScreen: $('homeScreen'),
+        loadingScreen: $('loadingScreen'),
+        readerScreen: $('readerScreen'),
+        loadingText: $('loadingText'),
+        homeError: $('homeError'),
+        fileInput: $('fileInput'),
+        chooseFileBtn: $('chooseFileBtn'),
+        togglePasteBtn: $('togglePasteBtn'),
+        pasteBox: $('pasteBox'),
+        pasteText: $('pasteText'),
+        startPastedBtn: $('startPastedBtn'),
+        homeWpm: $('homeWpm'),
+        homeWpmValue: $('homeWpmValue'),
+        homeSize: $('homeSize'),
+        homeSizeValue: $('homeSizeValue'),
+        beforeText: $('beforeText'),
+        pivotText: $('pivotText'),
+        afterText: $('afterText'),
+        readerTitle: $('readerTitle'),
+        readerStage: $('readerStage'),
+        backBtn: $('backBtn'),
+        settingsBtn: $('settingsBtn'),
+        readerControls: $('readerControls'),
+        currentIndexLabel: $('currentIndexLabel'),
+        totalIndexLabel: $('totalIndexLabel'),
+        progressRange: $('progressRange'),
+        prevBtn: $('prevBtn'),
+        nextBtn: $('nextBtn'),
+        playBtn: $('playBtn'),
+        slowerBtn: $('slowerBtn'),
+        fasterBtn: $('fasterBtn'),
+        readerWpm: $('readerWpm'),
+        statusLine: $('statusLine'),
+      };
+
+      const state = {
+        words: [],
+        index: 0,
+        timer: null,
+        playing: false,
+        wpm: Number(localStorage.getItem('pivotReader.wpm')) || 400,
+        fontSize: Number(localStorage.getItem('pivotReader.fontSize.v6')) || 50,
+        sourceKey: '',
+        sourceName: '',
+        hideTimer: null,
+      };
+
+      const SAMPLE_TEXT = 'Questo è un esempio di lettura rapida. Carica un EPUB, un PDF testuale oppure incolla un brano. La lettera rossa resta al centro e aiuta l’occhio ad agganciarsi alla parola.';
+
+      init();
+
+      function init() {
+        syncInitialSettings();
+        bindEvents();
+        showSampleWord();
+      }
+
+      function syncInitialSettings() {
+        els.homeWpm.value = String(state.wpm);
+        els.readerWpm.value = String(state.wpm);
+        els.homeWpmValue.textContent = `${state.wpm} WPM`;
+        els.statusLine.textContent = `${state.wpm} WPM`;
+        els.homeSize.value = String(state.fontSize);
+        els.homeSizeValue.textContent = String(state.fontSize);
+        document.documentElement.style.setProperty('--reader-font-size', `${state.fontSize}px`);
+      }
+
+      function bindEvents() {
+        els.chooseFileBtn.addEventListener('click', () => els.fileInput.click());
+        els.fileInput.addEventListener('change', handleFileInput);
+
+        els.togglePasteBtn.addEventListener('click', () => {
+          els.pasteBox.classList.toggle('active');
+          if (els.pasteBox.classList.contains('active')) els.pasteText.focus();
+        });
+
+        els.startPastedBtn.addEventListener('click', () => {
+          const text = els.pasteText.value.trim();
+          if (!text) return showError('Incolla prima un testo da leggere.');
+          startFromText(text, 'Testo incollato', `pasted:${hashText(text)}`);
+        });
+
+        els.homeWpm.addEventListener('input', (ev) => setWpm(Number(ev.target.value)));
+        els.readerWpm.addEventListener('input', (ev) => setWpm(Number(ev.target.value)));
+        els.homeSize.addEventListener('input', (ev) => setFontSize(Number(ev.target.value)));
+
+        els.backBtn.addEventListener('click', () => {
+          pause();
+          showScreen('home');
+        });
+
+        els.settingsBtn.addEventListener('click', () => toggleCleanMode(false));
+        els.readerStage.addEventListener('click', () => togglePlay());
+        els.readerScreen.addEventListener('pointermove', () => revealControlsTemporarily());
+        els.readerScreen.addEventListener('touchstart', () => revealControlsTemporarily(), { passive: true });
+
+        els.playBtn.addEventListener('click', togglePlay);
+        els.prevBtn.addEventListener('click', () => moveBy(-1));
+        els.nextBtn.addEventListener('click', () => moveBy(1));
+        els.slowerBtn.addEventListener('click', () => setWpm(Math.max(100, state.wpm - 25)));
+        els.fasterBtn.addEventListener('click', () => setWpm(Math.min(1200, state.wpm + 25)));
+
+        els.progressRange.addEventListener('input', (ev) => {
+          state.index = Number(ev.target.value);
+          renderWord();
+          savePosition();
+        });
+
+        document.addEventListener('keydown', handleKeyboard);
+      }
+
+      function handleKeyboard(ev) {
+        if (!els.readerScreen.classList.contains('active')) return;
+        if (ev.code === 'Space') {
+          ev.preventDefault();
+          togglePlay();
+        } else if (ev.key === 'ArrowLeft') {
+          moveBy(-1);
+        } else if (ev.key === 'ArrowRight') {
+          moveBy(1);
+        } else if (ev.key === 'ArrowUp') {
+          setWpm(Math.min(1200, state.wpm + 25));
+        } else if (ev.key === 'ArrowDown') {
+          setWpm(Math.max(100, state.wpm - 25));
+        }
+      }
+
+      async function handleFileInput(ev) {
+        const file = ev.target.files && ev.target.files[0];
+        ev.target.value = '';
+        if (!file) return;
+        clearError();
+        showScreen('loading');
+        els.loadingText.textContent = `Sto leggendo “${file.name}”…`;
+
+        try {
+          await waitForLibraries(file);
+          const text = await extractTextFromFile(file);
+          if (!text || countWords(text) < 5) {
+            throw new Error('Non ho trovato abbastanza testo. Il file potrebbe essere protetto, scansionato o non testuale.');
+          }
+          const key = `file:${file.name}:${file.size}:${file.lastModified}`;
+          startFromText(text, file.name, key);
+        } catch (error) {
+          console.error(error);
+          showScreen('home');
+          showError(error.message || 'Errore durante la lettura del file.');
+        }
+      }
+
+      function waitForLibraries(file) {
+        const lower = file.name.toLowerCase();
+        const needsZip = lower.endsWith('.epub');
+        const needsPdf = lower.endsWith('.pdf');
+        const started = Date.now();
+
+        return new Promise((resolve, reject) => {
+          const tick = () => {
+            const zipOk = !needsZip || Boolean(window.JSZip);
+            const pdfOk = !needsPdf || Boolean(window.pdfjsLib);
+            if (zipOk && pdfOk) return resolve();
+            if (Date.now() - started > 8000) {
+              if (needsZip) reject(new Error('JSZip non è stato caricato. Controlla la connessione internet e ricarica la pagina.'));
+              else reject(new Error('PDF.js non è stato caricato. Controlla la connessione internet e ricarica la pagina.'));
+              return;
+            }
+            setTimeout(tick, 80);
+          };
+          tick();
+        });
+      }
+
+      async function extractTextFromFile(file) {
+        const name = file.name.toLowerCase();
+        if (name.endsWith('.epub')) return extractEpubText(file);
+        if (name.endsWith('.pdf')) return extractPdfText(file);
+        if (name.endsWith('.txt') || file.type.startsWith('text/')) return file.text();
+        throw new Error('Formato non supportato. Usa EPUB, PDF o TXT.');
+      }
+
+      async function extractPdfText(file) {
+        if (!window.pdfjsLib) throw new Error('PDF.js non disponibile.');
+        const pdfjsLib = window.pdfjsLib;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const data = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data }).promise;
+        const pages = [];
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          els.loadingText.textContent = `Leggo pagina ${pageNum} di ${pdf.numPages}…`;
+          const page = await pdf.getPage(pageNum);
+          const content = await page.getTextContent();
+          pages.push(itemsToText(content.items));
+        }
+
+        return normalizeText(pages.join('\n\n'));
+      }
+
+      function itemsToText(items) {
+        let out = '';
+        let lastY = null;
+        for (const item of items) {
+          const text = item.str || '';
+          const y = item.transform ? Math.round(item.transform[5]) : null;
+          if (lastY !== null && y !== null && Math.abs(y - lastY) > 5) out += '\n';
+          else if (out && !out.endsWith(' ') && !out.endsWith('\n')) out += ' ';
+          out += text;
+          lastY = y;
+        }
+        return out;
+      }
+
+      async function extractEpubText(file) {
+        if (!window.JSZip) throw new Error('JSZip non disponibile.');
+        const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+        const orderedPaths = await getEpubSpinePaths(zip);
+        const htmlPaths = orderedPaths.length ? orderedPaths : fallbackHtmlPaths(zip);
+
+        if (!htmlPaths.length) throw new Error('Non trovo capitoli leggibili dentro l’EPUB.');
+
+        const parts = [];
+        for (let i = 0; i < htmlPaths.length; i++) {
+          els.loadingText.textContent = `Leggo capitolo ${i + 1} di ${htmlPaths.length}…`;
+          const path = htmlPaths[i];
+          const entry = zip.file(path);
+          if (!entry) continue;
+          const html = await entry.async('text');
+          const text = htmlToText(html);
+          if (text.trim()) parts.push(text);
+        }
+
+        return normalizeText(parts.join('\n\n'));
+      }
+
+      async function getEpubSpinePaths(zip) {
+        try {
+          const container = await zip.file('META-INF/container.xml')?.async('text');
+          if (!container) return [];
+          const containerDoc = new DOMParser().parseFromString(container, 'application/xml');
+          const rootfile = containerDoc.querySelector('rootfile');
+          const opfPath = rootfile?.getAttribute('full-path');
+          if (!opfPath) return [];
+
+          const opfText = await zip.file(opfPath)?.async('text');
+          if (!opfText) return [];
+          const opfDoc = new DOMParser().parseFromString(opfText, 'application/xml');
+          const base = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
+
+          const manifest = new Map();
+          opfDoc.querySelectorAll('manifest > item').forEach((item) => {
+            const id = item.getAttribute('id');
+            const href = item.getAttribute('href');
+            const mediaType = item.getAttribute('media-type') || '';
+            if (id && href && /html|xhtml|xml/i.test(mediaType + href)) {
+              manifest.set(id, normalizePath(base + href));
+            }
+          });
+
+          const paths = [];
+          opfDoc.querySelectorAll('spine > itemref').forEach((itemref) => {
+            const idref = itemref.getAttribute('idref');
+            const path = manifest.get(idref);
+            if (path) paths.push(path);
+          });
+          return [...new Set(paths)];
+        } catch (error) {
+          console.warn('EPUB spine fallback:', error);
+          return [];
+        }
+      }
+
+      function fallbackHtmlPaths(zip) {
+        return Object.keys(zip.files)
+          .filter((path) => /\.(xhtml|html|htm)$/i.test(path) && !zip.files[path].dir)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      }
+
+      function normalizePath(path) {
+        const stack = [];
+        path.split('/').forEach((part) => {
+          if (!part || part === '.') return;
+          if (part === '..') stack.pop();
+          else stack.push(part);
+        });
+        return stack.join('/');
+      }
+
+      function htmlToText(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('script, style, nav, svg, audio, video').forEach((el) => el.remove());
+        doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+        doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, blockquote').forEach((el) => {
+          el.appendChild(doc.createTextNode('\n'));
+        });
+        return normalizeText(doc.body?.textContent || '');
+      }
+
+      function normalizeText(text) {
+        return text
+          .replace(/\u00ad/g, '')
+          .replace(/[“”]/g, '"')
+          .replace(/[‘’]/g, "'")
+          .replace(/\s+([,.;:!?])/g, '$1')
+          .replace(/([,.;:!?])([^\s”"'])/g, '$1 $2')
+          .replace(/\n{3,}/g, '\n\n')
+          .replace(/[ \t]{2,}/g, ' ')
+          .trim();
+      }
+
+      function countWords(text) {
+        return tokenize(text).length;
+      }
+
+      function tokenize(text) {
+        const normalized = normalizeText(text);
+        const tokens = normalized.match(/[\p{L}\p{N}]+(?:[’'\-][\p{L}\p{N}]+)*|[^\s]/gu) || [];
+        const words = [];
+
+        for (const token of tokens) {
+          if (/^[,.;:!?…]+$/u.test(token) && words.length) {
+            words[words.length - 1] += token;
+          } else if (/^[\)\]\}"”»]+$/u.test(token) && words.length) {
+            words[words.length - 1] += token;
+          } else if (/^[\("“«]+$/u.test(token)) {
+            words.push(token);
+          } else {
+            words.push(token);
+          }
+        }
+
+        return words.filter((w) => /[\p{L}\p{N}]/u.test(w));
+      }
+
+      function startFromText(text, name, key) {
+        const words = tokenize(text);
+        if (words.length < 5) {
+          showScreen('home');
+          showError('Testo troppo breve o non leggibile.');
+          return;
+        }
+
+        state.words = words;
+        state.sourceName = name;
+        state.sourceKey = key;
+        state.index = Number(localStorage.getItem(positionKey())) || 0;
+        state.index = clamp(state.index, 0, state.words.length - 1);
+        state.playing = false;
+        els.readerTitle.textContent = `${name} · ${words.length.toLocaleString('it-IT')} parole`;
+        els.progressRange.max = String(words.length - 1);
+        els.totalIndexLabel.textContent = words.length.toLocaleString('it-IT');
+        showScreen('reader');
+        renderWord();
+        updateControls();
+        revealControlsTemporarily();
+      }
+
+      function showSampleWord() {
+        const sample = tokenize(SAMPLE_TEXT);
+        const word = sample[8] || 'lettura';
+        const parts = splitWord(word);
+        els.beforeText.textContent = parts.before;
+        els.pivotText.textContent = parts.pivot;
+        els.afterText.textContent = parts.after;
+      }
+
+      function renderWord() {
+        if (!state.words.length) return;
+        const word = state.words[state.index] || '';
+        const parts = splitWord(word);
+        els.beforeText.textContent = parts.before;
+        els.pivotText.textContent = parts.pivot;
+        els.afterText.textContent = parts.after;
+        updateControls();
+      }
+
+      function splitWord(rawWord) {
+        const word = String(rawWord || '').trim();
+        if (!word) return { before: '', pivot: '', after: '' };
+
+        const chars = Array.from(word);
+        const letterPositions = [];
+        chars.forEach((ch, idx) => {
+          if (/[\p{L}\p{N}]/u.test(ch)) letterPositions.push(idx);
+        });
+
+        if (!letterPositions.length) return { before: '', pivot: chars[0], after: chars.slice(1).join('') };
+
+        const pivotLetterNumber = choosePivotLetterNumber(letterPositions.length);
+        const pivotIndex = letterPositions[clamp(pivotLetterNumber, 0, letterPositions.length - 1)];
+
+        return {
+          before: chars.slice(0, pivotIndex).join(''),
+          pivot: chars[pivotIndex],
+          after: chars.slice(pivotIndex + 1).join(''),
+        };
+      }
+
+      function choosePivotLetterNumber(length) {
+        if (length <= 1) return 0;
+        if (length <= 3) return 1;
+        if (length <= 5) return 1;
+        if (length <= 9) return 2;
+        if (length <= 13) return 3;
+        return Math.max(1, Math.floor(length * 0.35));
+      }
+
+      function togglePlay(ev) {
+        if (ev) ev.stopPropagation();
+        if (!state.words.length) return;
+        state.playing ? pause() : play();
+      }
+
+      function play() {
+        state.playing = true;
+        updateControls();
+        toggleCleanMode(true);
+        scheduleNext();
+      }
+
+      function pause() {
+        state.playing = false;
+        clearTimeout(state.timer);
+        state.timer = null;
+        updateControls();
+        toggleCleanMode(false);
+        savePosition();
+      }
+
+      function scheduleNext() {
+        clearTimeout(state.timer);
+        if (!state.playing) return;
+        if (state.index >= state.words.length - 1) {
+          pause();
+          return;
+        }
+        state.timer = setTimeout(() => {
+          state.index += 1;
+          renderWord();
+          if (state.index % 20 === 0) savePosition();
+          scheduleNext();
+        }, currentDelay());
+      }
+
+      function currentDelay() {
+        const base = 60000 / state.wpm;
+        const word = state.words[state.index] || '';
+        let extra = 0;
+        if (/[.!?…]$/.test(word)) extra += 220;
+        else if (/[:;]$/.test(word)) extra += 150;
+        else if (/,$/.test(word)) extra += 80;
+        if (word.length >= 12) extra += 45;
+        return Math.max(18, Math.round(base + extra));
+      }
+
+      function moveBy(delta) {
+        pause();
+        state.index = clamp(state.index + delta, 0, Math.max(0, state.words.length - 1));
+        renderWord();
+        savePosition();
+      }
+
+      function setWpm(value) {
+        state.wpm = clamp(Number(value) || 400, 100, 1200);
+        localStorage.setItem('pivotReader.wpm', String(state.wpm));
+        els.homeWpm.value = String(state.wpm);
+        els.readerWpm.value = String(state.wpm);
+        els.homeWpmValue.textContent = `${state.wpm} WPM`;
+        els.statusLine.textContent = `${state.wpm} WPM`;
+        if (state.playing) scheduleNext();
+      }
+
+      function setFontSize(value) {
+        state.fontSize = clamp(Number(value) || 50, 42, 128);
+        localStorage.setItem('pivotReader.fontSize.v6', String(state.fontSize));
+        els.homeSize.value = String(state.fontSize);
+        els.homeSizeValue.textContent = String(state.fontSize);
+        document.documentElement.style.setProperty('--reader-font-size', `${state.fontSize}px`);
+      }
+
+      function updateControls() {
+        const total = state.words.length;
+        const humanIndex = total ? state.index + 1 : 0;
+        els.currentIndexLabel.textContent = humanIndex.toLocaleString('it-IT');
+        els.totalIndexLabel.textContent = total.toLocaleString('it-IT');
+        els.progressRange.max = String(Math.max(0, total - 1));
+        els.progressRange.value = String(state.index);
+        els.playBtn.textContent = state.playing ? 'Pausa' : 'Play';
+        const pct = total ? Math.round((humanIndex / total) * 100) : 0;
+        els.statusLine.textContent = `${state.wpm} WPM · ${pct}%`;
+      }
+
+      function showScreen(name) {
+        [els.homeScreen, els.loadingScreen, els.readerScreen].forEach((screen) => screen.classList.remove('active'));
+        if (name === 'home') els.homeScreen.classList.add('active');
+        if (name === 'loading') els.loadingScreen.classList.add('active');
+        if (name === 'reader') els.readerScreen.classList.add('active');
+      }
+
+      function toggleCleanMode(forceClean) {
+        const clean = typeof forceClean === 'boolean' ? forceClean : !els.readerScreen.classList.contains('clean');
+        els.readerScreen.classList.toggle('clean', clean);
+      }
+
+      function revealControlsTemporarily() {
+        if (!els.readerScreen.classList.contains('active')) return;
+        toggleCleanMode(false);
+        clearTimeout(state.hideTimer);
+        if (state.playing) {
+          state.hideTimer = setTimeout(() => toggleCleanMode(true), 1700);
+        }
+      }
+
+      function positionKey() {
+        return `pivotReader.position.${state.sourceKey}`;
+      }
+
+      function savePosition() {
+        if (!state.sourceKey) return;
+        localStorage.setItem(positionKey(), String(state.index));
+      }
+
+      function showError(message) {
+        els.homeError.textContent = message;
+        els.homeError.classList.add('active');
+      }
+
+      function clearError() {
+        els.homeError.textContent = '';
+        els.homeError.classList.remove('active');
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function hashText(text) {
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i++) {
+          hash ^= text.charCodeAt(i);
+          hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+        return (hash >>> 0).toString(16);
+      }
+    })();
+  </script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {
+          // Service worker non disponibile se il file è aperto da content:// o file://.
+        });
+      });
+    }
+  </script>
+</body>
+</html>
