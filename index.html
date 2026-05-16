@@ -24,9 +24,8 @@
       --accent-soft: rgba(255, 47, 95, 0.22);
       --danger: #ff6b6b;
       --radius: 24px;
-      --reader-font-size: 50px;
+      --reader-font-size: clamp(52px, 17vw, 112px);
       --reader-font-family: Georgia, 'Times New Roman', serif;
-      --pivot-x: 40%;
       color-scheme: dark;
     }
 
@@ -284,13 +283,13 @@
       display: grid;
       place-items: center;
       background:
-        radial-gradient(circle at var(--pivot-x) 50%, rgba(255, 255, 255, 0.045), transparent 22%),
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.045), transparent 22%),
         #000;
     }
 
     .center-line {
       position: absolute;
-      left: var(--pivot-x);
+      left: 50%;
       transform: translateX(-50%);
       width: 2px;
       height: 54px;
@@ -314,40 +313,29 @@
     }
 
     .word-grid {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
       display: grid;
-      grid-template-columns: minmax(0, calc(var(--pivot-x) - 0.45em)) auto minmax(0, calc(100vw - var(--pivot-x)));
-      align-items: center;
-      width: 100vw;
-      box-sizing: border-box;
-      padding: 0.12em 18px 0.22em;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: baseline;
+      width: min(96vw, 1100px);
+      padding: 0 18px;
       font-family: var(--reader-font-family);
       font-size: var(--reader-font-size);
-      line-height: 1.22;
+      line-height: 1;
       letter-spacing: 0.015em;
       text-shadow: 0 2px 18px rgba(255,255,255,0.12);
-      overflow: visible;
     }
 
     .before {
       text-align: right;
       color: var(--text);
       white-space: pre;
-      overflow-x: hidden;
-      overflow-y: visible;
+      overflow: hidden;
       text-overflow: clip;
-      line-height: 1.22;
     }
 
     .pivot {
       color: var(--accent);
       white-space: pre;
-      line-height: 1.22;
-      overflow: visible;
       text-shadow: 0 0 16px rgba(255, 47, 95, 0.42), 0 0 3px rgba(255,47,95,0.9);
     }
 
@@ -355,11 +343,8 @@
       text-align: left;
       color: var(--text);
       white-space: pre;
-      overflow-x: visible;
-      overflow-y: visible;
+      overflow: hidden;
       text-overflow: clip;
-      line-height: 1.22;
-      min-width: max-content;
     }
 
     .reader-topbar {
@@ -420,6 +405,17 @@
     .reader.clean .reader-controls { transform: translateY(18px); }
     .reader.clean .reader-topbar { transform: translateY(-18px); }
 
+    .progress-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
     .control-row {
       display: grid;
       grid-template-columns: 54px 1fr 54px;
@@ -436,32 +432,12 @@
       border-color: transparent;
     }
 
-    .reader-row-label {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-top: 10px;
-      margin-bottom: 6px;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.01em;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .reader-row-value {
-      color: var(--text);
-      font-weight: 800;
-      white-space: nowrap;
-    }
-
-    .slider-action-row {
+    .wpm-row {
       display: grid;
       grid-template-columns: 48px 1fr 48px;
       gap: 10px;
       align-items: center;
-      margin-top: 0;
+      margin-top: 10px;
     }
 
     .small-btn {
@@ -545,8 +521,8 @@
             <input id="homeWpm" type="range" min="100" max="1200" value="400" step="25" />
           </div>
           <div class="setting-card">
-            <div class="setting-head"><span>Dimensione parola</span><span id="homeSizeValue" class="setting-value">50</span></div>
-            <input id="homeSize" type="range" min="10" max="80" value="50" step="1" />
+            <div class="setting-head"><span>Dimensione parola</span><span id="homeSizeValue" class="setting-value">80</span></div>
+            <input id="homeSize" type="range" min="42" max="128" value="80" step="2" />
           </div>
         </div>
 
@@ -580,14 +556,10 @@
       </div>
 
       <div class="reader-controls" id="readerControls">
-        <div class="reader-row-label">
-          <span>Posizione</span>
-          <span class="reader-row-value"><span id="currentIndexLabel">0</span> / <span id="totalIndexLabel">0</span></span>
-        </div>
-        <div class="slider-action-row">
-          <button id="progressBackBtn" class="small-btn" type="button" aria-label="Indietro di una parola">−</button>
+        <div class="progress-row">
+          <span id="currentIndexLabel">0</span>
           <input id="progressRange" type="range" min="0" max="0" value="0" step="1" aria-label="Progresso" />
-          <button id="progressForwardBtn" class="small-btn" type="button" aria-label="Avanti di una parola">+</button>
+          <span id="totalIndexLabel">0</span>
         </div>
 
         <div class="control-row">
@@ -596,36 +568,12 @@
           <button id="nextBtn" class="icon-btn" type="button" aria-label="Parola successiva">›</button>
         </div>
 
-        <div class="reader-row-label">
-          <span>Centro parola</span>
-          <span id="readerPivotValue" class="reader-row-value">40%</span>
-        </div>
-        <div class="slider-action-row">
-          <button id="pivotLeftBtn" class="small-btn" type="button" aria-label="Sposta parola a sinistra">←</button>
-          <input id="readerPivot" type="range" min="30" max="55" value="40" step="1" aria-label="Posizione orizzontale della parola" />
-          <button id="pivotRightBtn" class="small-btn" type="button" aria-label="Sposta parola a destra">→</button>
-        </div>
-
-        <div class="reader-row-label">
-          <span>Velocità</span>
-          <span id="readerWpmValue" class="reader-row-value">400 WPM</span>
-        </div>
-        <div class="slider-action-row">
+        <div class="wpm-row">
           <button id="slowerBtn" class="small-btn" type="button" aria-label="Rallenta">−</button>
           <input id="readerWpm" type="range" min="100" max="1200" value="400" step="25" aria-label="Velocità parole al minuto" />
           <button id="fasterBtn" class="small-btn" type="button" aria-label="Accelera">+</button>
         </div>
-
-        <div class="reader-row-label">
-          <span>Testo</span>
-          <span id="readerSizeValue" class="reader-row-value">50</span>
-        </div>
-        <div class="slider-action-row">
-          <button id="smallerTextBtn" class="small-btn" type="button" aria-label="Riduci dimensione testo">−</button>
-          <input id="readerSize" type="range" min="10" max="80" value="50" step="1" aria-label="Dimensione parola" />
-          <button id="largerTextBtn" class="small-btn" type="button" aria-label="Aumenta dimensione testo">+</button>
-        </div>
-        <div id="statusLine" class="status-line">0%</div>
+        <div id="statusLine" class="status-line">400 WPM</div>
       </div>
     </section>
   </main>
@@ -663,23 +611,12 @@
         currentIndexLabel: $('currentIndexLabel'),
         totalIndexLabel: $('totalIndexLabel'),
         progressRange: $('progressRange'),
-        progressBackBtn: $('progressBackBtn'),
-        progressForwardBtn: $('progressForwardBtn'),
         prevBtn: $('prevBtn'),
         nextBtn: $('nextBtn'),
         playBtn: $('playBtn'),
         slowerBtn: $('slowerBtn'),
         fasterBtn: $('fasterBtn'),
         readerWpm: $('readerWpm'),
-        readerWpmValue: $('readerWpmValue'),
-        readerPivot: $('readerPivot'),
-        readerPivotValue: $('readerPivotValue'),
-        pivotLeftBtn: $('pivotLeftBtn'),
-        pivotRightBtn: $('pivotRightBtn'),
-        readerSize: $('readerSize'),
-        smallerTextBtn: $('smallerTextBtn'),
-        largerTextBtn: $('largerTextBtn'),
-        readerSizeValue: $('readerSizeValue'),
         statusLine: $('statusLine'),
       };
 
@@ -689,8 +626,7 @@
         timer: null,
         playing: false,
         wpm: Number(localStorage.getItem('pivotReader.wpm')) || 400,
-        pivotX: Number(localStorage.getItem('pivotReader.pivotX.v1')) || 40,
-        fontSize: Number(localStorage.getItem('pivotReader.fontSize.v7')) || 50,
+        fontSize: Number(localStorage.getItem('pivotReader.fontSize')) || 80,
         sourceKey: '',
         sourceName: '',
         hideTimer: null,
@@ -710,15 +646,9 @@
         els.homeWpm.value = String(state.wpm);
         els.readerWpm.value = String(state.wpm);
         els.homeWpmValue.textContent = `${state.wpm} WPM`;
-        els.readerWpmValue.textContent = `${state.wpm} WPM`;
-        els.readerPivot.value = String(state.pivotX);
-        els.readerPivotValue.textContent = `${state.pivotX}%`;
-        document.documentElement.style.setProperty('--pivot-x', `${state.pivotX}%`);
-        els.statusLine.textContent = '0%';
+        els.statusLine.textContent = `${state.wpm} WPM`;
         els.homeSize.value = String(state.fontSize);
         els.homeSizeValue.textContent = String(state.fontSize);
-        els.readerSize.value = String(state.fontSize);
-        els.readerSizeValue.textContent = String(state.fontSize);
         document.documentElement.style.setProperty('--reader-font-size', `${state.fontSize}px`);
       }
 
@@ -739,44 +669,23 @@
 
         els.homeWpm.addEventListener('input', (ev) => setWpm(Number(ev.target.value)));
         els.readerWpm.addEventListener('input', (ev) => setWpm(Number(ev.target.value)));
-        els.readerPivot.addEventListener('input', (ev) => setPivotX(Number(ev.target.value)));
         els.homeSize.addEventListener('input', (ev) => setFontSize(Number(ev.target.value)));
-        els.readerSize.addEventListener('input', (ev) => setFontSize(Number(ev.target.value)));
 
         els.backBtn.addEventListener('click', () => {
           pause();
           showScreen('home');
         });
 
-        els.settingsBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          revealControlsAndStop();
-        });
-
-        els.readerStage.addEventListener('click', () => {
-          if (state.playing) {
-            pause();
-            return;
-          }
-          togglePlay();
-        });
-
+        els.settingsBtn.addEventListener('click', () => toggleCleanMode(false));
+        els.readerStage.addEventListener('click', () => togglePlay());
         els.readerScreen.addEventListener('pointermove', () => revealControlsTemporarily());
-        els.readerScreen.addEventListener('touchstart', () => {
-          if (!state.playing) revealControlsTemporarily();
-        }, { passive: true });
+        els.readerScreen.addEventListener('touchstart', () => revealControlsTemporarily(), { passive: true });
 
         els.playBtn.addEventListener('click', togglePlay);
         els.prevBtn.addEventListener('click', () => moveBy(-1));
         els.nextBtn.addEventListener('click', () => moveBy(1));
-        els.progressBackBtn.addEventListener('click', () => moveBy(-1));
-        els.progressForwardBtn.addEventListener('click', () => moveBy(1));
         els.slowerBtn.addEventListener('click', () => setWpm(Math.max(100, state.wpm - 25)));
         els.fasterBtn.addEventListener('click', () => setWpm(Math.min(1200, state.wpm + 25)));
-        els.pivotLeftBtn.addEventListener('click', () => setPivotX(Math.max(30, state.pivotX - 1)));
-        els.pivotRightBtn.addEventListener('click', () => setPivotX(Math.min(55, state.pivotX + 1)));
-        els.smallerTextBtn.addEventListener('click', () => setFontSize(Math.max(10, state.fontSize - 1)));
-        els.largerTextBtn.addEventListener('click', () => setFontSize(Math.min(80, state.fontSize + 1)));
 
         els.progressRange.addEventListener('input', (ev) => {
           state.index = Number(ev.target.value);
@@ -1099,9 +1008,7 @@
       function pause() {
         state.playing = false;
         clearTimeout(state.timer);
-        clearTimeout(state.hideTimer);
         state.timer = null;
-        state.hideTimer = null;
         updateControls();
         toggleCleanMode(false);
         savePosition();
@@ -1146,29 +1053,16 @@
         els.homeWpm.value = String(state.wpm);
         els.readerWpm.value = String(state.wpm);
         els.homeWpmValue.textContent = `${state.wpm} WPM`;
-        els.readerWpmValue.textContent = `${state.wpm} WPM`;
-        els.statusLine.textContent = '0%';
+        els.statusLine.textContent = `${state.wpm} WPM`;
         if (state.playing) scheduleNext();
       }
 
-      function setPivotX(value) {
-        state.pivotX = clamp(Number(value) || 40, 30, 55);
-        localStorage.setItem('pivotReader.pivotX.v1', String(state.pivotX));
-        els.readerPivot.value = String(state.pivotX);
-        els.readerPivotValue.textContent = `${state.pivotX}%`;
-        document.documentElement.style.setProperty('--pivot-x', `${state.pivotX}%`);
-        if (state.words.length) renderWord();
-      }
-
       function setFontSize(value) {
-        state.fontSize = clamp(Number(value) || 50, 10, 80);
-        localStorage.setItem('pivotReader.fontSize.v7', String(state.fontSize));
+        state.fontSize = clamp(Number(value) || 80, 42, 128);
+        localStorage.setItem('pivotReader.fontSize', String(state.fontSize));
         els.homeSize.value = String(state.fontSize);
         els.homeSizeValue.textContent = String(state.fontSize);
-        els.readerSize.value = String(state.fontSize);
-        els.readerSizeValue.textContent = String(state.fontSize);
         document.documentElement.style.setProperty('--reader-font-size', `${state.fontSize}px`);
-        if (state.words.length) renderWord();
       }
 
       function updateControls() {
@@ -1180,10 +1074,7 @@
         els.progressRange.value = String(state.index);
         els.playBtn.textContent = state.playing ? 'Pausa' : 'Play';
         const pct = total ? Math.round((humanIndex / total) * 100) : 0;
-        els.readerWpmValue.textContent = `${state.wpm} WPM`;
-        els.readerPivot.value = String(state.pivotX);
-        els.readerPivotValue.textContent = `${state.pivotX}%`;
-        els.statusLine.textContent = `${pct}% letto`;
+        els.statusLine.textContent = `${state.wpm} WPM · ${pct}%`;
       }
 
       function showScreen(name) {
@@ -1200,25 +1091,11 @@
 
       function revealControlsTemporarily() {
         if (!els.readerScreen.classList.contains('active')) return;
-        if (state.playing) {
-          revealControlsAndStop();
-          return;
-        }
         toggleCleanMode(false);
         clearTimeout(state.hideTimer);
-        state.hideTimer = null;
-      }
-
-      function revealControlsAndStop() {
-        if (!els.readerScreen.classList.contains('active')) return;
         if (state.playing) {
-          pause();
-          return;
+          state.hideTimer = setTimeout(() => toggleCleanMode(true), 1700);
         }
-        clearTimeout(state.hideTimer);
-        state.hideTimer = null;
-        updateControls();
-        toggleCleanMode(false);
       }
 
       function positionKey() {
