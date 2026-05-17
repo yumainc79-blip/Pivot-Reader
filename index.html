@@ -358,6 +358,27 @@
 
     .chapter-list { display: grid; gap: 8px; margin-top: 16px; max-height: none; overflow: visible; padding: 0 0 56px; }
 
+    .export-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .export-row button {
+      min-height: 44px;
+      padding: 8px 10px;
+      font-size: 14px;
+    }
+
+    .export-status {
+      min-height: 18px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
     .chapter-item {
       width: 100%;
       border-radius: 18px;
@@ -720,6 +741,11 @@
           <div id="bookCurrentChapter" class="reader-location-title">—</div>
           <div id="bookCurrentMeta" class="reader-location-meta">—</div>
         </div>
+        <div class="export-row" aria-label="Export diagnostico">
+          <button id="exportProcessedBtn" type="button">Copia elaborato</button>
+          <button id="exportOriginalBtn" type="button">Copia originale</button>
+        </div>
+        <div id="exportStatus" class="export-status" aria-live="polite"></div>
         <div id="chapterList" class="chapter-list"></div>
       </div>
     </section>
@@ -835,6 +861,7 @@
         kpiBooks: $('kpiBooks'), kpiWords: $('kpiWords'), kpiProgress: $('kpiProgress'), kpiCompleted: $('kpiCompleted'),
         bookBackBtn: $('bookBackBtn'), bookTitle: $('bookTitle'), bookMeta: $('bookMeta'), continueBookBtn: $('continueBookBtn'), chapterList: $('chapterList'),
         bookNavSummary: $('bookNavSummary'), bookCurrentChapter: $('bookCurrentChapter'), bookCurrentMeta: $('bookCurrentMeta'),
+        exportProcessedBtn: $('exportProcessedBtn'), exportOriginalBtn: $('exportOriginalBtn'), exportStatus: $('exportStatus'),
         beforeText: $('beforeText'), pivotText: $('pivotText'), afterText: $('afterText'), readerTitle: $('readerTitle'), readerStage: $('readerStage'),
         readerChapterTitle: $('readerChapterTitle'), readerChapterMeta: $('readerChapterMeta'),
         backBtn: $('backBtn'), settingsBtn: $('settingsBtn'), readerControls: $('readerControls'), progressRange: $('progressRange'),
@@ -912,6 +939,8 @@
         els.continueBookBtn.addEventListener('click', () => {
           if (state.currentBook) startReaderFromBook(state.currentBook.id, state.currentBook.lastWordIndex || 0);
         });
+        els.exportProcessedBtn.addEventListener('click', () => exportCurrentBookText('processed'));
+        els.exportOriginalBtn.addEventListener('click', () => exportCurrentBookText('original'));
 
         els.backBtn.addEventListener('click', async () => {
           pause();
@@ -969,7 +998,7 @@
         try {
           const title = `Testo incollato ${new Date().toLocaleDateString('it-IT')}`;
           setWizardStep('clean');
-          const imported = { title, author: '', fileName: title, format: 'txt', chapters: buildTextChapters(rawText, 2200) };
+          const imported = { title, author: '', fileName: title, format: 'txt', rawText, chapters: buildTextChapters(rawText, 2200) };
           const report = createImportReport(imported);
           validateImportReport(report);
           setWizardStep('save');
@@ -1089,7 +1118,7 @@
         if (lower.endsWith('.pdf') || file.type === 'application/pdf') return extractPdfBook(file);
         if (lower.endsWith('.epub') || file.type === 'application/epub+zip') return extractEpubBook(file);
         const rawText = await file.text();
-        return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'txt', chapters: buildTextChapters(rawText, 2200) };
+        return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'txt', rawText, chapters: buildTextChapters(rawText, 2200) };
       }
 
       async function extractPdfBook(file) {
@@ -1113,7 +1142,7 @@
         const outlineChapters = await getPdfOutlineChapters(pdf, rawPages, repeatedLines);
         const detectedChapters = detectChaptersFromText(rawPages.join('\n\n'));
         const chapters = outlineChapters.length > 1 ? outlineChapters : detectedChapters.length > 1 ? detectedChapters : pageChapters;
-        return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'pdf', chapters };
+        return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'pdf', rawText: rawPages.join('\n\n'), chapters };
       }
 
       async function getPdfOutlineChapters(pdf, rawPages, repeatedLines) {
@@ -1187,6 +1216,7 @@
         if (!htmlPaths.length) throw new Error('Non trovo capitoli leggibili dentro l’EPUB.');
 
         const chapters = [];
+        const rawTextParts = [];
         for (let i = 0; i < htmlPaths.length; i++) {
           els.loadingText.textContent = `Leggo capitolo ${i + 1} di ${htmlPaths.length}…`;
           const path = htmlPaths[i];
@@ -1194,6 +1224,7 @@
           if (!entry) continue;
           const html = await entry.async('text');
           const parsed = htmlToTextAndTitle(html);
+          if (parsed.rawText) rawTextParts.push(parsed.rawText);
           if (parsed.text.trim()) {
             const tocEntries = epubInfo.tocEntries.filter((entry) => entry.path === path);
             const tocTitle = epubInfo.titleByPath[path] || epubInfo.titleByPath[stripEpubAnchor(path)] || '';
@@ -1212,6 +1243,7 @@
           author: epubInfo.author || '',
           fileName: file.name,
           format: 'epub',
+          rawText: rawTextParts.join('\n\n'),
           chapters,
         };
       }
@@ -1479,6 +1511,7 @@
           author: imported.author || '',
           fileName: imported.fileName || '',
           format: imported.format || 'txt',
+          rawText: imported.rawText || '',
           totalWords: cursor,
           chapterCount: chapterRecords.length,
           importReport: importReport ? {
@@ -1609,12 +1642,77 @@
         state.currentChapters = chapters;
         els.bookTitle.textContent = book.title || 'Libro';
         els.bookMeta.textContent = `${book.author ? book.author + ' · ' : ''}${formatLabel(book.format)} · ${book.totalWords.toLocaleString('it-IT')} parole · ${chapters.length} capitoli/blocchi`;
+        els.exportOriginalBtn.disabled = !book.rawText;
+        els.exportStatus.textContent = book.rawText ? 'Export disponibile: originale + testo elaborato.' : 'Export originale disponibile solo per i nuovi import. Puoi copiare il testo elaborato.';
         const resume = getChapterAt(book.lastWordIndex || 0, chapters);
         const chapterLabel = resume ? safeChapterTitle(resume, chapters) : 'Inizio libro';
         els.continueBookBtn.textContent = book.lastWordIndex > 0 ? `Continua: ${chapterLabel}` : 'Inizia lettura';
         renderBookNavigationSummary(book, chapters);
         renderChapters(book, chapters);
         showScreen('book');
+      }
+
+      async function exportCurrentBookText(kind) {
+        if (!state.currentBook) return;
+        const chapters = state.currentChapters.length ? state.currentChapters : await getChapters(state.currentBook.id);
+        const isOriginal = kind === 'original';
+        const text = isOriginal ? (state.currentBook.rawText || '') : buildProcessedExportText(state.currentBook, chapters);
+        if (!text.trim()) {
+          els.exportStatus.textContent = isOriginal
+            ? 'Originale non disponibile per questo libro: reimportalo con questa versione e riprova.'
+            : 'Nessun testo elaborato disponibile.';
+          return;
+        }
+
+        const label = isOriginal ? 'originale' : 'elaborato';
+        const fileName = `${slugifyFileName(state.currentBook.title || 'pivot-reader')}-${label}.txt`;
+        try {
+          await copyTextToClipboard(text);
+          els.exportStatus.textContent = `Testo ${label} copiato negli appunti.`;
+        } catch (_) {
+          downloadTextFile(fileName, text);
+          els.exportStatus.textContent = `Appunti non disponibili: ho preparato il download ${fileName}.`;
+        }
+      }
+
+      function buildProcessedExportText(book, chapters) {
+        const header = [
+          `Titolo: ${book.title || 'Libro'}`,
+          `Formato: ${formatLabel(book.format)}`,
+          `Capitoli: ${chapters.length}`,
+          '',
+        ].join('\n');
+        const body = chapters.map((chapter) => {
+          const title = safeChapterTitle(chapter, chapters);
+          const text = (chapter.words || []).join(' ');
+          return `# ${title}\n\n${text}`;
+        }).join('\n\n');
+        return `${header}${body}`;
+      }
+
+      async function copyTextToClipboard(text) {
+        if (!navigator.clipboard || !window.isSecureContext) throw new Error('Clipboard non disponibile');
+        await navigator.clipboard.writeText(text);
+      }
+
+      function downloadTextFile(fileName, text) {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      function slugifyFileName(name) {
+        return normalizeText(name)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/gi, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 48) || 'pivot-reader';
       }
 
       function renderBookNavigationSummary(book, chapters) {
