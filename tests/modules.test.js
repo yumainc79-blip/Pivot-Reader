@@ -36,6 +36,16 @@ test('import report summarizes chapters and warnings', () => {
   assert.ok(report.warnings.length >= 1);
 });
 
+test('text pipeline detects real chapter headings before block fallback', () => {
+  const body = 'Questa e una frase di contenuto ripetuta per dare sostanza al capitolo. '.repeat(12);
+  const text = `Capitolo 1\nIl risveglio\n${body}\n\nCapitolo 2\nLa strada\n${body}`;
+  const chapters = textPipeline.buildTextChapters(text, 2200);
+  assert.equal(chapters.length, 2);
+  assert.equal(chapters[0].title, 'Capitolo 1');
+  assert.equal(chapters[1].title, 'Capitolo 2');
+  assert.match(chapters[0].text, /risveglio/);
+});
+
 test('chapter engine finds current and adjacent chapters', () => {
   const chapters = [
     { index: 0, startWordIndex: 0, endWordIndex: 9, wordCount: 10 },

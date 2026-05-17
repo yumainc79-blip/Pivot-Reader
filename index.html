@@ -1106,9 +1106,11 @@
           rawPages.push(itemsToText(content.items));
         }
         const repeatedLines = findRepeatedNoiseLines(rawPages.join('\n'));
-        const chapters = rawPages
+        const pageChapters = rawPages
           .map((raw, index) => ({ title: `Pagina ${index + 1}`, text: cleanBookText(raw, { repeatedLines }) }))
           .filter((chapter) => chapter.text.trim());
+        const detectedChapters = detectChaptersFromText(pageChapters.map((chapter) => chapter.text).join('\n\n'));
+        const chapters = detectedChapters.length > 1 ? detectedChapters : pageChapters;
         return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'pdf', chapters };
       }
 
@@ -1300,6 +1302,13 @@
           chapters.push({ title: `Blocco ${chapters.length + 1}`, text: words.slice(i, i + wordsPerBlock).join(' ') });
         }
         return chapters;
+      }
+
+      function detectChaptersFromText(text) {
+        if (FEATURE_FLAGS.USE_TEXT_PIPELINE_V1 && window.PivotTextPipeline?.detectChaptersFromText) {
+          return window.PivotTextPipeline.detectChaptersFromText(text);
+        }
+        return [];
       }
 
       async function saveImportedBook(imported, importReport = null) {

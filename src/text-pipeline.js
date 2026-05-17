@@ -116,12 +116,68 @@
   }
 
   function buildTextChapters(text, wordsPerBlock = 2200) {
+    const detected = detectChaptersFromText(text);
+    if (detected.length > 1) return detected;
+
     const words = tokenize(text);
     const chapters = [];
     for (let i = 0; i < words.length; i += wordsPerBlock) {
       chapters.push({ title: `Blocco ${chapters.length + 1}`, text: words.slice(i, i + wordsPerBlock).join(' ') });
     }
     return chapters;
+  }
+
+  function detectChaptersFromText(text, options = {}) {
+    const minWordsPerChapter = Number(options.minWordsPerChapter) || 80;
+    const minChapters = Number(options.minChapters) || 2;
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    const headings = [];
+
+    lines.forEach((line, index) => {
+      const title = normalizeTextLine(line);
+      if (isChapterHeading(title, index, lines)) headings.push({ index, title: normalizeChapterTitle(title) });
+    });
+
+    if (headings.length < minChapters) return [];
+
+    const chapters = [];
+    for (let i = 0; i < headings.length; i += 1) {
+      const start = headings[i].index;
+      const end = i + 1 < headings.length ? headings[i + 1].index : lines.length;
+      const body = lines.slice(start + 1, end).join('\n');
+      const cleaned = cleanBookText(body);
+      const wordCount = tokenize(cleaned).length;
+      if (wordCount >= minWordsPerChapter || i === headings.length - 1) {
+        chapters.push({ title: headings[i].title, text: cleaned });
+      } else if (chapters.length) {
+        chapters[chapters.length - 1].text = cleanBookText(`${chapters[chapters.length - 1].text}\n\n${headings[i].title}\n${cleaned}`);
+      }
+    }
+
+    return chapters.filter((chapter) => tokenize(chapter.text).length > 0);
+  }
+
+  function isChapterHeading(title, index, lines) {
+    if (!title || title.length > 96) return false;
+    if (!/[\p{L}\p{N}]/u.test(title)) return false;
+    if (/[.!?;:,]$/.test(title)) return false;
+    if (/^(page|pagina|pag\.)\s+\d+/i.test(title)) return false;
+    if (/^\d{1,4}$/.test(title)) return false;
+
+    const previous = normalizeTextLine(lines[index - 1] || '');
+    const next = normalizeTextLine(lines[index + 1] || '');
+    const hasBreathingRoom = !previous || !next || previous.length < 120;
+    if (!hasBreathingRoom) return false;
+
+    return /^((chapter|chap\.?|capitolo|cap\.?)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b.*)$/i.test(title) ||
+      /^((parte|part)\s+([0-9]+|[ivxlcdm]+)\b.*)$/i.test(title) ||
+      /^([0-9]{1,2}|[ivxlcdm]{1,8})\s*[-.)]\s+[\p{Lu}\p{Lt}0-9][\p{L}\p{N}'’" -]{2,}$/u.test(title) ||
+      /^(prologo|prologue|epilogo|epilogue|introduzione|introduction|prefazione|preface|conclusione|conclusion)$/i.test(title);
+  }
+
+  function normalizeChapterTitle(title) {
+    const value = normalizeTextLine(title).replace(/\s+/g, ' ');
+    return value || 'Capitolo';
   }
 
   function createImportReport(input) {
@@ -169,6 +225,8 @@
     cleanBookText,
     tokenize,
     buildTextChapters,
+    detectChaptersFromText,
+    isChapterHeading,
     createImportReport,
   };
 });
