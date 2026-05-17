@@ -152,6 +152,21 @@
     h1 { font-size: clamp(34px, 8vw, 58px); }
     h2 { font-size: clamp(28px, 6vw, 44px); }
 
+    .title-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .version-badge {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
     .subtitle, .note, .muted {
       color: var(--muted);
       line-height: 1.45;
@@ -664,7 +679,10 @@
           <div class="logo">
             <div class="logo-mark">r</div>
             <div>
-              <h1>Pivot Reader</h1>
+              <div class="title-row">
+                <h1>Pivot Reader</h1>
+                <span class="version-badge">v. 0.1</span>
+              </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
           </div>
@@ -823,6 +841,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
+      const APP_VERSION = 'v. 0.1';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -1653,18 +1672,26 @@
 
         const label = isOriginal ? 'originale' : 'elaborato';
         const fileName = `${slugifyFileName(state.currentBook.title || 'pivot-reader')}-${label}.txt`;
-        try {
-          await copyTextToClipboard(text);
-          els.exportStatus.textContent = `Testo ${label} copiato negli appunti.`;
-        } catch (_) {
-          downloadTextFile(fileName, text);
-          els.exportStatus.textContent = `Appunti non disponibili: ho preparato il download ${fileName}.`;
-        }
+        const exportText = isOriginal ? buildOriginalExportText(state.currentBook, text) : text;
+        downloadTextFile(fileName, exportText);
+        els.exportStatus.textContent = `File ${label} esportato: ${fileName}.`;
+      }
+
+      function buildOriginalExportText(book, rawText) {
+        return [
+          `Titolo: ${book.title || 'Libro'}`,
+          `Versione app: ${APP_VERSION}`,
+          `Formato: ${formatLabel(book.format)}`,
+          'Tipo export: originale',
+          '',
+          rawText,
+        ].join('\n');
       }
 
       function buildProcessedExportText(book, chapters) {
         const header = [
           `Titolo: ${book.title || 'Libro'}`,
+          `Versione app: ${APP_VERSION}`,
           `Formato: ${formatLabel(book.format)}`,
           `Capitoli: ${chapters.length}`,
           '',
@@ -1675,11 +1702,6 @@
           return `# ${title}\n\n${text}`;
         }).join('\n\n');
         return `${header}${body}`;
-      }
-
-      async function copyTextToClipboard(text) {
-        if (!navigator.clipboard || !window.isSecureContext) throw new Error('Clipboard non disponibile');
-        await navigator.clipboard.writeText(text);
       }
 
       function downloadTextFile(fileName, text) {
