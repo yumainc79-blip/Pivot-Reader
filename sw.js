@@ -1,8 +1,13 @@
-const CACHE_NAME = 'pivot-reader-v8-onfly-rewind';
+const CACHE_NAME = 'pivot-reader-v9-modular-import';
 
 const CORE_ASSETS = [
   './',
   './index.html',
+  './index-library.html',
+  './src/text-pipeline.js',
+  './src/chapter-engine.js',
+  './src/reader-core.js',
+  './src/pivot-engine.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -212,6 +212,85 @@
       font-size: 13px;
     }
 
+    .kpi-dashboard {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 12px 0 0;
+    }
+
+    .kpi-tile {
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.052);
+      border: 1px solid rgba(255,255,255,.09);
+      min-width: 0;
+    }
+
+    .kpi-label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .kpi-value {
+      margin-top: 4px;
+      font-size: 20px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .import-report {
+      display: none;
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 20px;
+      background: rgba(255,255,255,.055);
+      border: 1px solid rgba(255,255,255,.10);
+    }
+
+    .import-report.active { display: block; }
+
+    .import-report-title {
+      font-weight: 900;
+      line-height: 1.25;
+    }
+
+    .import-report-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .import-report-warning {
+      margin-top: 8px;
+      color: #ffd9a3;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .import-steps {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .import-step {
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.052);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+
+    .import-step.active {
+      color: var(--text);
+      border-color: rgba(255,47,95,.38);
+      background: rgba(255,47,95,.11);
+    }
+
     .settings-grid {
       display: grid;
       grid-template-columns: 1fr;
@@ -577,6 +656,12 @@
             <h3>Ultimi libri</h3>
             <span id="libraryCount" class="book-meta">0</span>
           </div>
+          <div id="kpiDashboard" class="kpi-dashboard" aria-label="Indicatori libreria">
+            <div class="kpi-tile"><div class="kpi-label">Libri</div><div id="kpiBooks" class="kpi-value">0</div></div>
+            <div class="kpi-tile"><div class="kpi-label">Parole salvate</div><div id="kpiWords" class="kpi-value">0</div></div>
+            <div class="kpi-tile"><div class="kpi-label">Avanzamento medio</div><div id="kpiProgress" class="kpi-value">0%</div></div>
+            <div class="kpi-tile"><div class="kpi-label">Completati</div><div id="kpiCompleted" class="kpi-value">0</div></div>
+          </div>
           <div id="bookList" class="book-list"></div>
           <div id="emptyLibrary" class="empty-library">Nessun libro salvato. Caricane uno per iniziare.</div>
         </div>
@@ -589,6 +674,12 @@
           <div id="pasteBox" class="paste-box">
             <textarea id="pasteText" placeholder="Incolla qui il testo da leggere..."></textarea>
             <button id="startPastedBtn" class="secondary-btn" type="button">Salva e avvia testo incollato</button>
+          </div>
+
+          <div id="importReport" class="import-report" aria-live="polite">
+            <div id="importReportTitle" class="import-report-title"></div>
+            <div id="importReportMeta" class="import-report-meta"></div>
+            <div id="importReportWarning" class="import-report-warning"></div>
           </div>
 
           <div class="supported" aria-label="Formati supportati">
@@ -638,6 +729,11 @@
         <div class="spinner" aria-hidden="true"></div>
         <h2>Preparo il testo…</h2>
         <p id="loadingText" class="muted">Sto leggendo il file e separando le parole.</p>
+        <div class="import-steps" aria-label="Avanzamento import">
+          <div id="importStepRead" class="import-step">Lettura file</div>
+          <div id="importStepClean" class="import-step">Pulizia testo</div>
+          <div id="importStepSave" class="import-step">Salvataggio locale</div>
+        </div>
       </div>
     </section>
 
@@ -707,6 +803,10 @@
     </section>
   </main>
 
+  <script src="src/text-pipeline.js"></script>
+  <script src="src/chapter-engine.js"></script>
+  <script src="src/reader-core.js"></script>
+  <script src="src/pivot-engine.js"></script>
   <script>
     (() => {
       'use strict';
@@ -714,14 +814,25 @@
       const $ = (id) => document.getElementById(id);
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
+      const FEATURE_FLAGS = {
+        USE_TEXT_PIPELINE_V1: true,
+        USE_CHAPTER_ENGINE_V2: true,
+        USE_READER_CORE_V1: true,
+        USE_PIVOT_THIRD_LETTER: true,
+        USE_IMPORT_WIZARD_V1: true,
+        USE_KPI_DASHBOARD_V1: true,
+      };
       const SAMPLE_TEXT = 'Questo è un esempio di lettura rapida. Carica un EPUB, un PDF testuale oppure incolla un brano. La lettera rossa resta al centro e aiuta l’occhio ad agganciarsi alla parola.';
 
       const els = {
         homeScreen: $('homeScreen'), bookScreen: $('bookScreen'), loadingScreen: $('loadingScreen'), readerScreen: $('readerScreen'),
         loadingText: $('loadingText'), homeError: $('homeError'), fileInput: $('fileInput'), chooseFileBtn: $('chooseFileBtn'),
         togglePasteBtn: $('togglePasteBtn'), pasteBox: $('pasteBox'), pasteText: $('pasteText'), startPastedBtn: $('startPastedBtn'),
+        importReport: $('importReport'), importReportTitle: $('importReportTitle'), importReportMeta: $('importReportMeta'), importReportWarning: $('importReportWarning'),
+        importStepRead: $('importStepRead'), importStepClean: $('importStepClean'), importStepSave: $('importStepSave'),
         homeWpm: $('homeWpm'), homeWpmValue: $('homeWpmValue'), homeSize: $('homeSize'), homeSizeValue: $('homeSizeValue'),
         bookList: $('bookList'), emptyLibrary: $('emptyLibrary'), libraryCount: $('libraryCount'),
+        kpiBooks: $('kpiBooks'), kpiWords: $('kpiWords'), kpiProgress: $('kpiProgress'), kpiCompleted: $('kpiCompleted'),
         bookBackBtn: $('bookBackBtn'), bookTitle: $('bookTitle'), bookMeta: $('bookMeta'), continueBookBtn: $('continueBookBtn'), chapterList: $('chapterList'),
         bookNavSummary: $('bookNavSummary'), bookCurrentChapter: $('bookCurrentChapter'), bookCurrentMeta: $('bookCurrentMeta'),
         beforeText: $('beforeText'), pivotText: $('pivotText'), afterText: $('afterText'), readerTitle: $('readerTitle'), readerStage: $('readerStage'),
@@ -749,6 +860,7 @@
         fontSize: Number(localStorage.getItem('pivotReader.fontSize.v7')) || 50,
         pivotX: Number(localStorage.getItem('pivotReader.pivotX.v1')) || 40,
         saveTimer: null,
+        lastImportReport: null,
       };
 
       init();
@@ -849,17 +961,24 @@
         const text = cleanBookText(els.pasteText.value.trim());
         if (!text) return showError('Incolla prima un testo da leggere.');
         clearError();
+        clearImportReport();
         showScreen('loading');
+        setWizardStep('read');
         els.loadingText.textContent = 'Preparo il testo incollato…';
         try {
           const title = `Testo incollato ${new Date().toLocaleDateString('it-IT')}`;
-          const bookId = await saveImportedBook({ title, author: '', fileName: title, format: 'txt', chapters: buildTextChapters(text, 2200) });
+          setWizardStep('clean');
+          const imported = { title, author: '', fileName: title, format: 'txt', chapters: buildTextChapters(text, 2200) };
+          const report = createImportReport(imported);
+          validateImportReport(report);
+          setWizardStep('save');
+          const bookId = await saveImportedBook(imported, report);
           await loadLibrary();
           await openBookScreen(bookId);
         } catch (error) {
           console.error(error);
           showScreen('home');
-          showError(error.message || 'Errore durante la preparazione del testo.');
+          showImportFallback(error.message || 'Errore durante la preparazione del testo.');
         }
       }
 
@@ -868,21 +987,87 @@
         ev.target.value = '';
         if (!file) return;
         clearError();
+        clearImportReport();
         showScreen('loading');
+        setWizardStep('read');
         els.loadingText.textContent = `Sto leggendo “${file.name}”…`;
         try {
           await waitForLibraries(file);
           const imported = await extractBookFromFile(file);
-          const totalWords = imported.chapters.reduce((sum, chapter) => sum + tokenize(chapter.text).length, 0);
-          if (totalWords < 5) throw new Error('Non ho trovato abbastanza testo. Il file potrebbe essere protetto, scansionato o non testuale.');
-          const bookId = await saveImportedBook(imported);
+          setWizardStep('clean');
+          const report = createImportReport(imported);
+          validateImportReport(report);
+          setWizardStep('save');
+          const bookId = await saveImportedBook(imported, report);
           await loadLibrary();
           await openBookScreen(bookId);
         } catch (error) {
           console.error(error);
           showScreen('home');
-          showError(error.message || 'Errore durante la lettura del file.');
+          showImportFallback(error.message || 'Errore durante la lettura del file.');
         }
+      }
+
+      function createImportReport(imported) {
+        if (FEATURE_FLAGS.USE_TEXT_PIPELINE_V1 && window.PivotTextPipeline?.createImportReport) {
+          return window.PivotTextPipeline.createImportReport(imported);
+        }
+        const chapters = Array.isArray(imported.chapters) ? imported.chapters : [];
+        const totalWords = chapters.reduce((sum, chapter) => sum + tokenize(chapter.text).length, 0);
+        return {
+          title: imported.title || imported.fileName || 'Libro',
+          format: imported.format || 'txt',
+          chapterCount: chapters.length,
+          readableChapters: chapters.filter((chapter) => tokenize(chapter.text).length > 0).length,
+          emptyChapters: 0,
+          totalWords,
+          warnings: totalWords < 5 ? ['Testo insufficiente: il file potrebbe essere protetto, scansionato o non testuale.'] : [],
+        };
+      }
+
+      function validateImportReport(report) {
+        if (!report || report.totalWords < 5) {
+          throw new Error('Non ho trovato abbastanza testo. Il file potrebbe essere protetto, scansionato o non testuale.');
+        }
+        state.lastImportReport = report;
+        renderImportReport(report);
+      }
+
+      function renderImportReport(report) {
+        if (!els.importReport || !report) return;
+        els.importReportTitle.textContent = report.title || 'Import completato';
+        els.importReportMeta.textContent = `${formatLabel(report.format)} · ${report.totalWords.toLocaleString('it-IT')} parole · ${report.readableChapters}/${report.chapterCount} capitoli leggibili`;
+        els.importReportWarning.textContent = (report.warnings || []).join(' ');
+        els.importReport.classList.add('active');
+      }
+
+      function clearImportReport() {
+        if (!els.importReport) return;
+        state.lastImportReport = null;
+        els.importReport.classList.remove('active');
+        els.importReportTitle.textContent = '';
+        els.importReportMeta.textContent = '';
+        els.importReportWarning.textContent = '';
+      }
+
+      function showImportFallback(message) {
+        showError(`${message} Puoi riprovare con un TXT/EPUB senza DRM oppure usare "Oppure incolla testo".`);
+        if (els.pasteBox) els.pasteBox.classList.add('active');
+        if (els.pasteText) els.pasteText.focus();
+      }
+
+      function setWizardStep(step) {
+        if (!FEATURE_FLAGS.USE_IMPORT_WIZARD_V1) return;
+        const order = ['read', 'clean', 'save'];
+        const activeIndex = order.indexOf(step);
+        [
+          ['read', els.importStepRead],
+          ['clean', els.importStepClean],
+          ['save', els.importStepSave],
+        ].forEach(([key, element], index) => {
+          if (!element) return;
+          element.classList.toggle('active', index <= activeIndex && activeIndex >= 0);
+        });
       }
 
       async function waitForLibraries(file) {
@@ -1106,6 +1291,9 @@
       }
 
       function buildTextChapters(text, wordsPerBlock) {
+        if (FEATURE_FLAGS.USE_TEXT_PIPELINE_V1 && window.PivotTextPipeline?.buildTextChapters) {
+          return window.PivotTextPipeline.buildTextChapters(text, wordsPerBlock);
+        }
         const words = tokenize(text);
         const chapters = [];
         for (let i = 0; i < words.length; i += wordsPerBlock) {
@@ -1114,7 +1302,7 @@
         return chapters;
       }
 
-      async function saveImportedBook(imported) {
+      async function saveImportedBook(imported, importReport = null) {
         const now = Date.now();
         let cursor = 0;
         const bookId = `book_${hashText(`${imported.fileName}|${imported.title}|${now}`)}`;
@@ -1146,6 +1334,12 @@
           format: imported.format || 'txt',
           totalWords: cursor,
           chapterCount: chapterRecords.length,
+          importReport: importReport ? {
+            totalWords: importReport.totalWords,
+            readableChapters: importReport.readableChapters,
+            emptyChapters: importReport.emptyChapters,
+            warnings: importReport.warnings || [],
+          } : null,
           addedAt: now,
           lastOpenedAt: now,
           lastWordIndex: 0,
@@ -1202,6 +1396,7 @@
         const books = await requestPromise(tx.objectStore('books').getAll());
         state.library = books.sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0));
         renderLibrary();
+        renderKpiDashboard();
       }
 
       function renderLibrary() {
@@ -1229,6 +1424,21 @@
           item.querySelector('[data-action="delete"]').addEventListener('click', () => deleteBook(book.id));
           els.bookList.appendChild(item);
         });
+      }
+
+      function renderKpiDashboard() {
+        if (!FEATURE_FLAGS.USE_KPI_DASHBOARD_V1 || !window.PivotReaderCore) return;
+        const kpi = window.PivotReaderCore.buildKpiSnapshot({
+          library: state.library,
+          currentBook: state.currentBook,
+          words: state.words,
+          index: state.index,
+          wpm: state.wpm,
+        });
+        els.kpiBooks.textContent = String(kpi.totalBooks);
+        els.kpiWords.textContent = kpi.totalWords.toLocaleString('it-IT');
+        els.kpiProgress.textContent = `${kpi.averageProgressPct}%`;
+        els.kpiCompleted.textContent = String(kpi.completedBooks);
       }
 
       async function deleteBook(bookId) {
@@ -1369,6 +1579,9 @@
       }
 
       function splitWord(rawWord) {
+        if (FEATURE_FLAGS.USE_PIVOT_THIRD_LETTER && window.PivotEngine?.splitWord) {
+          return window.PivotEngine.splitWord(rawWord, { mode: 'third-letter' });
+        }
         const word = String(rawWord || '').trim();
         if (!word) return { before: '', pivot: '', after: '' };
         const chars = Array.from(word);
@@ -1480,6 +1693,7 @@
         els.playBtn.textContent = state.playing ? 'Pausa' : 'Play';
         const remaining = Math.max(0, total - humanIndex);
         updateNavigationInfo();
+        renderKpiDashboard();
         els.statusLine.textContent = `${state.wpm} WPM · ${formatMinutes(remaining, state.wpm)} al termine del libro`;
       }
 
@@ -1531,6 +1745,10 @@
       }
 
       function queuePositionSave() {
+        if (FEATURE_FLAGS.USE_READER_CORE_V1 && window.PivotReaderCore?.queuePositionSave) {
+          window.PivotReaderCore.queuePositionSave(state, savePositionNow, 500);
+          return;
+        }
         clearTimeout(state.saveTimer);
         state.saveTimer = setTimeout(savePositionNow, 500);
       }
@@ -1547,12 +1765,18 @@
       }
 
       function currentChapterIndex(wordIndex) {
+        if (FEATURE_FLAGS.USE_CHAPTER_ENGINE_V2 && window.PivotChapterEngine?.currentChapterIndex) {
+          return window.PivotChapterEngine.currentChapterIndex(wordIndex, state.currentChapters);
+        }
         const chapter = state.currentChapters.find((item) => wordIndex >= item.startWordIndex && wordIndex <= item.endWordIndex);
         return chapter ? chapter.index : 0;
       }
 
 
       function getChapterAt(wordIndex, chapters = state.currentChapters) {
+        if (FEATURE_FLAGS.USE_CHAPTER_ENGINE_V2 && window.PivotChapterEngine?.getChapterAt) {
+          return window.PivotChapterEngine.getChapterAt(wordIndex, chapters);
+        }
         if (!chapters || !chapters.length) return null;
         return chapters.find((item) => wordIndex >= item.startWordIndex && wordIndex <= item.endWordIndex) || chapters[0];
       }
@@ -1715,10 +1939,9 @@
       function jumpChapter(direction) {
         if (!state.currentChapters.length) return;
         pause();
-        const current = getChapterAt(state.index);
-        const currentIdx = current ? current.index : 0;
-        const targetIdx = clamp(currentIdx + direction, 0, state.currentChapters.length - 1);
-        const target = state.currentChapters[targetIdx];
+        const target = FEATURE_FLAGS.USE_CHAPTER_ENGINE_V2 && window.PivotChapterEngine?.getAdjacentChapter
+          ? window.PivotChapterEngine.getAdjacentChapter(state.index, state.currentChapters, direction)
+          : state.currentChapters[clamp((getChapterAt(state.index)?.index || 0) + direction, 0, state.currentChapters.length - 1)];
         if (!target) return;
         state.index = clamp(target.startWordIndex, 0, Math.max(0, state.words.length - 1));
         renderWord();
@@ -1726,6 +1949,9 @@
       }
 
       function cleanBookText(text, options = {}) {
+        if (FEATURE_FLAGS.USE_TEXT_PIPELINE_V1 && window.PivotTextPipeline?.cleanBookText) {
+          return window.PivotTextPipeline.cleanBookText(text, options);
+        }
         const repeatedLines = options.repeatedLines || findRepeatedNoiseLines(text);
         let raw = String(text || '')
           .replace(/\r\n?/g, '\n')
@@ -1827,6 +2053,9 @@
       }
 
       function tokenize(text) {
+        if (FEATURE_FLAGS.USE_TEXT_PIPELINE_V1 && window.PivotTextPipeline?.tokenize) {
+          return window.PivotTextPipeline.tokenize(text);
+        }
         const normalized = normalizeText(text);
         const tokens = normalized.match(/[\p{L}\p{N}]+(?:[’'\-][\p{L}\p{N}]+)*|[^\s]/gu) || [];
         const words = [];
