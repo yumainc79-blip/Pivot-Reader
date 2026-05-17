@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pivot-reader-v0-7-previous-sentence';
+const CACHE_NAME = 'pivot-reader-v0-8-left-tap-previous';
 
 const CORE_ASSETS = [
   './',

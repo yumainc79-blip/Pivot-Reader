@@ -681,7 +681,7 @@
             <div>
               <div class="title-row">
                 <h1>Pivot Reader</h1>
-                <span class="version-badge">v. 0.7</span>
+                <span class="version-badge">v. 0.8</span>
               </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
@@ -801,9 +801,7 @@
         </div>
 
         <div class="control-row">
-          <button id="prevBtn" class="icon-btn rewind-btn" type="button" aria-label="Torna all’inizio della frase precedente">↶</button>
           <button id="playBtn" class="play-btn" type="button">Play</button>
-          <button id="nextBtn" class="icon-btn" type="button" aria-label="Parola successiva">›</button>
         </div>
 
         <div class="reader-row-label"><span>Centro parola</span><span id="pivotValue" class="reader-row-value">40%</span></div>
@@ -841,7 +839,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
-      const APP_VERSION = 'v. 0.7';
+      const APP_VERSION = 'v. 0.8';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -873,7 +871,7 @@
         readerChapterTitle: $('readerChapterTitle'), readerChapterMeta: $('readerChapterMeta'),
         backBtn: $('backBtn'), settingsBtn: $('settingsBtn'), readerControls: $('readerControls'), progressRange: $('progressRange'),
         progressMinusBtn: $('progressMinusBtn'), progressPlusBtn: $('progressPlusBtn'), positionValue: $('positionValue'),
-        prevBtn: $('prevBtn'), nextBtn: $('nextBtn'), playBtn: $('playBtn'), prevChapterBtn: $('prevChapterBtn'), nextChapterBtn: $('nextChapterBtn'),
+        playBtn: $('playBtn'), prevChapterBtn: $('prevChapterBtn'), nextChapterBtn: $('nextChapterBtn'),
         pivotRange: $('pivotRange'), pivotValue: $('pivotValue'), pivotLeftBtn: $('pivotLeftBtn'), pivotRightBtn: $('pivotRightBtn'),
         slowerBtn: $('slowerBtn'), fasterBtn: $('fasterBtn'), readerWpm: $('readerWpm'), wpmValue: $('wpmValue'),
         readerSize: $('readerSize'), readerSizeValue: $('readerSizeValue'), sizeMinusBtn: $('sizeMinusBtn'), sizePlusBtn: $('sizePlusBtn'),
@@ -966,8 +964,6 @@
         els.readerStage.addEventListener('pointerup', handleReaderPointerUp);
         els.readerStage.addEventListener('pointercancel', handleReaderPointerCancel);
         els.playBtn.addEventListener('click', (ev) => { ev.stopPropagation(); togglePlay(); });
-        els.prevBtn.addEventListener('click', () => rewindSentence({ flash: true, forcePrevious: true }));
-        els.nextBtn.addEventListener('click', () => moveBy(1));
         els.prevChapterBtn.addEventListener('click', () => jumpChapter(-1));
         els.nextChapterBtn.addEventListener('click', () => jumpChapter(1));
         els.progressMinusBtn.addEventListener('click', () => moveBy(-10));
@@ -2074,7 +2070,7 @@
 
         if (isLeftHalf) {
           ev.preventDefault();
-          rewindSentence({ keepClean: true, keepPlaying: true, flash: true });
+          rewindSentence({ keepClean: true, keepPlaying: state.playing, flash: true, forcePrevious: true });
           return;
         }
 
