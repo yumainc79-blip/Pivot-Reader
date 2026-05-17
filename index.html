@@ -681,7 +681,7 @@
             <div>
               <div class="title-row">
                 <h1>Pivot Reader</h1>
-                <span class="version-badge">v. 0.4</span>
+                <span class="version-badge">v. 0.5</span>
               </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
@@ -841,7 +841,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
-      const APP_VERSION = 'v. 0.4';
+      const APP_VERSION = 'v. 0.5';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -1282,7 +1282,32 @@
         if (!clean.length) return [];
         const minDepth = Math.min(...clean.map((entry) => Number(entry.depth) || 0));
         const main = clean.filter((entry) => (Number(entry.depth) || 0) === minDepth);
-        return main.length >= 2 ? main : [];
+        if (main.length < 2) return [];
+
+        return main.map((entry) => {
+          const firstChild = clean.find((candidate) =>
+            (Number(candidate.depth) || 0) === minDepth + 1 &&
+            candidate.path === entry.path &&
+            candidate.href !== entry.href &&
+            tocEntryFollows(entry, candidate, clean)
+          );
+          if (!firstChild || !isGenericMainTocTitle(entry.title)) return entry;
+          return { ...entry, title: `${entry.title.replace(/\s*:$/, '')} - ${firstChild.title}` };
+        });
+      }
+
+      function tocEntryFollows(parent, child, entries) {
+        const parentIndex = entries.indexOf(parent);
+        const childIndex = entries.indexOf(child);
+        if (parentIndex < 0 || childIndex <= parentIndex) return false;
+        const nextPeerIndex = entries.findIndex((entry, index) =>
+          index > parentIndex && (Number(entry.depth) || 0) <= (Number(parent.depth) || 0)
+        );
+        return nextPeerIndex < 0 || childIndex < nextPeerIndex;
+      }
+
+      function isGenericMainTocTitle(title) {
+        return /^(chapter|capitolo)\s+\d+\s*:?$/i.test(normalizeText(title));
       }
 
       async function getEpubInfo(zip) {
