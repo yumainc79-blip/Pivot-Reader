@@ -681,7 +681,7 @@
             <div>
               <div class="title-row">
                 <h1>Pivot Reader</h1>
-                <span class="version-badge">v. 0.6</span>
+                <span class="version-badge">v. 0.7</span>
               </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
@@ -841,7 +841,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
-      const APP_VERSION = 'v. 0.6';
+      const APP_VERSION = 'v. 0.7';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -966,7 +966,7 @@
         els.readerStage.addEventListener('pointerup', handleReaderPointerUp);
         els.readerStage.addEventListener('pointercancel', handleReaderPointerCancel);
         els.playBtn.addEventListener('click', (ev) => { ev.stopPropagation(); togglePlay(); });
-        els.prevBtn.addEventListener('click', () => rewindSentence({ flash: true }));
+        els.prevBtn.addEventListener('click', () => rewindSentence({ flash: true, forcePrevious: true }));
         els.nextBtn.addEventListener('click', () => moveBy(1));
         els.prevChapterBtn.addEventListener('click', () => jumpChapter(-1));
         els.nextChapterBtn.addEventListener('click', () => jumpChapter(1));
@@ -994,7 +994,7 @@
       function handleKeyboard(ev) {
         if (!els.readerScreen.classList.contains('active')) return;
         if (ev.code === 'Space') { ev.preventDefault(); togglePlay(); }
-        else if (ev.key === 'ArrowLeft') rewindSentence({ flash: true });
+        else if (ev.key === 'ArrowLeft') rewindSentence({ flash: true, forcePrevious: true });
         else if (ev.key === 'ArrowRight') moveBy(1);
         else if (ev.key === 'ArrowUp') setWpm(state.wpm + 25);
         else if (ev.key === 'ArrowDown') setWpm(state.wpm - 25);
