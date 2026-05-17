@@ -958,7 +958,8 @@
       }
 
       async function handlePastedText() {
-        const text = cleanBookText(els.pasteText.value.trim());
+        const rawText = els.pasteText.value.trim();
+        const text = cleanBookText(rawText);
         if (!text) return showError('Incolla prima un testo da leggere.');
         clearError();
         clearImportReport();
@@ -968,7 +969,7 @@
         try {
           const title = `Testo incollato ${new Date().toLocaleDateString('it-IT')}`;
           setWizardStep('clean');
-          const imported = { title, author: '', fileName: title, format: 'txt', chapters: buildTextChapters(text, 2200) };
+          const imported = { title, author: '', fileName: title, format: 'txt', chapters: buildTextChapters(rawText, 2200) };
           const report = createImportReport(imported);
           validateImportReport(report);
           setWizardStep('save');
@@ -1087,8 +1088,8 @@
         const lower = file.name.toLowerCase();
         if (lower.endsWith('.pdf') || file.type === 'application/pdf') return extractPdfBook(file);
         if (lower.endsWith('.epub') || file.type === 'application/epub+zip') return extractEpubBook(file);
-        const text = cleanBookText(await file.text());
-        return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'txt', chapters: buildTextChapters(text, 2200) };
+        const rawText = await file.text();
+        return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'txt', chapters: buildTextChapters(rawText, 2200) };
       }
 
       async function extractPdfBook(file) {
@@ -1109,7 +1110,7 @@
         const pageChapters = rawPages
           .map((raw, index) => ({ title: `Pagina ${index + 1}`, text: cleanBookText(raw, { repeatedLines }) }))
           .filter((chapter) => chapter.text.trim());
-        const detectedChapters = detectChaptersFromText(pageChapters.map((chapter) => chapter.text).join('\n\n'));
+        const detectedChapters = detectChaptersFromText(rawPages.join('\n\n'));
         const chapters = detectedChapters.length > 1 ? detectedChapters : pageChapters;
         return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'pdf', chapters };
       }
@@ -1145,8 +1146,13 @@
           const parsed = htmlToTextAndTitle(html);
           if (parsed.text.trim()) {
             const tocTitle = epubInfo.titleByPath[path] || epubInfo.titleByPath[stripEpubAnchor(path)] || '';
-            const bestTitle = pickChapterTitle(tocTitle, parsed.title, path, chapters.length);
-            chapters.push({ title: bestTitle, text: parsed.text });
+            const splitChapters = detectChaptersFromText(parsed.rawText || parsed.text);
+            if (splitChapters.length > 1) {
+              splitChapters.forEach((chapter) => chapters.push(chapter));
+            } else {
+              const bestTitle = pickChapterTitle(tocTitle, parsed.title, path, chapters.length);
+              chapters.push({ title: bestTitle, text: parsed.text });
+            }
           }
         }
         return {
@@ -1289,7 +1295,8 @@
         const title = normalizeText(doc.querySelector('h1,h2,h3,title')?.textContent || '');
         doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
         doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, blockquote, section').forEach((el) => el.appendChild(doc.createTextNode('\n')));
-        return { title, text: cleanBookText(doc.body?.textContent || '') };
+        const rawText = doc.body?.textContent || '';
+        return { title, rawText, text: cleanBookText(rawText) };
       }
 
       function buildTextChapters(text, wordsPerBlock) {

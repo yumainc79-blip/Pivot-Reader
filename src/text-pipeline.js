@@ -119,7 +119,7 @@
     const detected = detectChaptersFromText(text);
     if (detected.length > 1) return detected;
 
-    const words = tokenize(text);
+    const words = tokenize(cleanBookText(text));
     const chapters = [];
     for (let i = 0; i < words.length; i += wordsPerBlock) {
       chapters.push({ title: `Blocco ${chapters.length + 1}`, text: words.slice(i, i + wordsPerBlock).join(' ') });
@@ -135,14 +135,14 @@
 
     lines.forEach((line, index) => {
       const title = normalizeTextLine(line);
-      if (isChapterHeading(title, index, lines)) headings.push({ index, title: normalizeChapterTitle(title) });
+      if (isChapterHeading(title, index, lines)) headings.push(resolveHeading(title, index, lines));
     });
 
     if (headings.length < minChapters) return [];
 
     const chapters = [];
     for (let i = 0; i < headings.length; i += 1) {
-      const start = headings[i].index;
+      const start = headings[i].endIndex;
       const end = i + 1 < headings.length ? headings[i + 1].index : lines.length;
       const body = lines.slice(start + 1, end).join('\n');
       const cleaned = cleanBookText(body);
@@ -162,17 +162,47 @@
     if (!/[\p{L}\p{N}]/u.test(title)) return false;
     if (/[.!?;:,]$/.test(title)) return false;
     if (/^(page|pagina|pag\.)\s+\d+/i.test(title)) return false;
-    if (/^\d{1,4}$/.test(title)) return false;
 
     const previous = normalizeTextLine(lines[index - 1] || '');
     const next = normalizeTextLine(lines[index + 1] || '');
-    const hasBreathingRoom = !previous || !next || previous.length < 120;
+    const afterNext = normalizeTextLine(lines[index + 2] || '');
+    const hasBreathingRoom = !previous || previous.length < 80;
     if (!hasBreathingRoom) return false;
 
-    return /^((chapter|chap\.?|capitolo|cap\.?)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b.*)$/i.test(title) ||
+    return /^((chapter|chap\.?|capitolo|cap\.?)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b.*)$/i.test(title) ||
       /^((parte|part)\s+([0-9]+|[ivxlcdm]+)\b.*)$/i.test(title) ||
       /^([0-9]{1,2}|[ivxlcdm]{1,8})\s*[-.)]\s+[\p{Lu}\p{Lt}0-9][\p{L}\p{N}'’" -]{2,}$/u.test(title) ||
+      (/^([0-9]{1,3}|[ivxlcdm]{1,8})$/i.test(title) && looksLikeHeadingContinuation(next) && looksLikeBodyStart(afterNext)) ||
+      (isAllCapsHeading(title) && looksLikeBodyStart(next)) ||
       /^(prologo|prologue|epilogo|epilogue|introduzione|introduction|prefazione|preface|conclusione|conclusion)$/i.test(title);
+  }
+
+  function resolveHeading(title, index, lines) {
+    const next = normalizeTextLine(lines[index + 1] || '');
+    const markerOnly = /^((chapter|chap\.?|capitolo|cap\.?)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)|[0-9]{1,3}|[ivxlcdm]{1,8})$/i.test(title);
+    if (markerOnly && looksLikeHeadingContinuation(next)) {
+      return { index, endIndex: index + 1, title: normalizeChapterTitle(`${title} - ${next}`) };
+    }
+    return { index, endIndex: index, title: normalizeChapterTitle(title) };
+  }
+
+  function looksLikeHeadingContinuation(line) {
+    const value = normalizeTextLine(line);
+    return Boolean(value && value.length <= 80 && /[\p{L}]/u.test(value) && !/[.!?;:]$/.test(value));
+  }
+
+  function looksLikeBodyStart(line) {
+    const value = normalizeTextLine(line);
+    return Boolean(value && value.length >= 12 && /[\p{Ll}]/u.test(value));
+  }
+
+  function isAllCapsHeading(line) {
+    const value = normalizeTextLine(line);
+    if (value.length < 4 || value.length > 72) return false;
+    if (!/[\p{L}]/u.test(value) || /[.!?;:]$/.test(value)) return false;
+    const letters = Array.from(value).filter((ch) => /\p{L}/u.test(ch));
+    if (letters.length < 4) return false;
+    return letters.every((ch) => ch === ch.toLocaleUpperCase());
   }
 
   function normalizeChapterTitle(title) {

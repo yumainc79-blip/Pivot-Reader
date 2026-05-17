@@ -41,9 +41,27 @@ test('text pipeline detects real chapter headings before block fallback', () => 
   const text = `Capitolo 1\nIl risveglio\n${body}\n\nCapitolo 2\nLa strada\n${body}`;
   const chapters = textPipeline.buildTextChapters(text, 2200);
   assert.equal(chapters.length, 2);
-  assert.equal(chapters[0].title, 'Capitolo 1');
-  assert.equal(chapters[1].title, 'Capitolo 2');
-  assert.match(chapters[0].text, /risveglio/);
+  assert.equal(chapters[0].title, 'Capitolo 1 - Il risveglio');
+  assert.equal(chapters[1].title, 'Capitolo 2 - La strada');
+  assert.match(chapters[0].text, /sostanza/);
+});
+
+test('text pipeline detects numeric heading plus title on the next line', () => {
+  const body = 'Questa frase simula il corpo del capitolo con abbastanza parole per superare la soglia minima. '.repeat(12);
+  const text = `1\nIl risveglio\n${body}\n\n2\nLa strada\n${body}`;
+  const chapters = textPipeline.buildTextChapters(text, 2200);
+  assert.equal(chapters.length, 2);
+  assert.equal(chapters[0].title, '1 - Il risveglio');
+  assert.equal(chapters[1].title, '2 - La strada');
+});
+
+test('text pipeline detects uppercase chapter markers used by many ebooks', () => {
+  const body = 'This sentence represents the chapter body and gives the detector enough lower-case prose to trust it. '.repeat(12);
+  const text = `CHAPTER ONE\nA Quiet Arrival\n${body}\n\nCHAPTER TWO\nThe Door Opens\n${body}`;
+  const chapters = textPipeline.buildTextChapters(text, 2200);
+  assert.equal(chapters.length, 2);
+  assert.equal(chapters[0].title, 'CHAPTER ONE - A Quiet Arrival');
+  assert.equal(chapters[1].title, 'CHAPTER TWO - The Door Opens');
 });
 
 test('chapter engine finds current and adjacent chapters', () => {
