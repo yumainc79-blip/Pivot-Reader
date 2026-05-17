@@ -681,7 +681,7 @@
             <div>
               <div class="title-row">
                 <h1>Pivot Reader</h1>
-                <span class="version-badge">v. 0.3</span>
+                <span class="version-badge">v. 0.4</span>
               </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
@@ -841,7 +841,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
-      const APP_VERSION = 'v. 0.3';
+      const APP_VERSION = 'v. 0.4';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -1236,7 +1236,10 @@
         if (!window.JSZip) throw new Error('JSZip non disponibile.');
         const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
         const epubInfo = await getEpubInfo(zip);
-        const htmlPaths = epubInfo.paths.length ? epubInfo.paths : fallbackHtmlPaths(zip);
+        const mainTocEntries = getMainTocEntries(epubInfo.tocEntries);
+        const htmlPaths = mainTocEntries.length
+          ? [...new Set(mainTocEntries.map((entry) => entry.path))]
+          : epubInfo.paths.length ? epubInfo.paths : fallbackHtmlPaths(zip);
         if (!htmlPaths.length) throw new Error('Non trovo capitoli leggibili dentro l’EPUB.');
 
         const chapters = [];
@@ -1250,14 +1253,16 @@
           const parsed = htmlToTextAndTitle(html);
           if (parsed.rawText) rawTextParts.push(parsed.rawText);
           if (parsed.text.trim()) {
-            const tocEntries = epubInfo.tocEntries.filter((entry) => entry.path === path);
+            const tocEntries = mainTocEntries.length
+              ? mainTocEntries.filter((entry) => entry.path === path)
+              : epubInfo.tocEntries.filter((entry) => entry.path === path);
             const tocTitle = epubInfo.titleByPath[path] || epubInfo.titleByPath[stripEpubAnchor(path)] || '';
             const tocChapters = htmlToChaptersByToc(html, tocEntries);
             const splitChapters = tocChapters.length > 1 ? tocChapters : detectChaptersFromText(parsed.rawText || parsed.text);
             if (splitChapters.length > 1) {
               splitChapters.forEach((chapter) => chapters.push(chapter));
             } else {
-              const bestTitle = pickChapterTitle(tocTitle, parsed.title, path, chapters.length);
+              const bestTitle = pickChapterTitle(tocEntries[0]?.title || tocTitle, parsed.title, path, chapters.length);
               chapters.push({ title: bestTitle, text: parsed.text });
             }
           }
@@ -1270,6 +1275,14 @@
           rawText: rawTextParts.join('\n\n'),
           chapters,
         };
+      }
+
+      function getMainTocEntries(entries) {
+        const clean = (entries || []).filter((entry) => entry && entry.path && !isBadChapterTitle(entry.title));
+        if (!clean.length) return [];
+        const minDepth = Math.min(...clean.map((entry) => Number(entry.depth) || 0));
+        const main = clean.filter((entry) => (Number(entry.depth) || 0) === minDepth);
+        return main.length >= 2 ? main : [];
       }
 
       async function getEpubInfo(zip) {
@@ -1363,17 +1376,22 @@
         const titleByPath = {};
         const entries = [];
         const doc = new DOMParser().parseFromString(ncxText, 'application/xml');
-        doc.querySelectorAll('navPoint').forEach((point) => {
+        const visit = (point, depth) => {
           const src = point.querySelector('content')?.getAttribute('src') || '';
           const label = normalizeText(point.querySelector('navLabel text')?.textContent || '');
-          if (!src || isBadChapterTitle(label)) return;
-          const href = normalizeEpubHref(base, src, { keepAnchor: true });
-          const path = stripEpubAnchor(href);
-          const anchor = extractEpubAnchor(href);
-          titleByPath[href] = label;
-          titleByPath[path] = titleByPath[path] || label;
-          entries.push({ href, path, anchor, title: label });
-        });
+          if (src && !isBadChapterTitle(label)) {
+            const href = normalizeEpubHref(base, src, { keepAnchor: true });
+            const path = stripEpubAnchor(href);
+            const anchor = extractEpubAnchor(href);
+            titleByPath[href] = label;
+            titleByPath[path] = titleByPath[path] || label;
+            entries.push({ href, path, anchor, title: label, depth });
+          }
+          [...point.children]
+            .filter((child) => child.localName === 'navPoint' || child.tagName === 'navPoint')
+            .forEach((child) => visit(child, depth + 1));
+        };
+        [...doc.querySelectorAll('navMap > navPoint')].forEach((point) => visit(point, 0));
         return { titleByPath, entries };
       }
 
@@ -1392,15 +1410,25 @@
           const anchor = extractEpubAnchor(normalizedHref);
           titleByPath[normalizedHref] = title;
           titleByPath[path] = titleByPath[path] || title;
-          entries.push({ href: normalizedHref, path, anchor, title });
+          entries.push({ href: normalizedHref, path, anchor, title, depth: getNavLinkDepth(link, tocNav) });
         });
         return { titleByPath, entries };
+      }
+
+      function getNavLinkDepth(link, root) {
+        let depth = 0;
+        let node = link.parentElement;
+        while (node && node !== root) {
+          if (node.tagName && node.tagName.toLowerCase() === 'ol') depth += 1;
+          node = node.parentElement;
+        }
+        return Math.max(0, depth - 1);
       }
 
       function dedupeTocEntries(entries) {
         const seen = new Set();
         return entries.filter((entry) => {
-          const key = `${entry.href}|${entry.title}`;
+          const key = `${entry.href}|${entry.title}|${entry.depth || 0}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;

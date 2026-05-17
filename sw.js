@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pivot-reader-v0-3-pdf-text-repair';
+const CACHE_NAME = 'pivot-reader-v0-4-epub-toc-depth';
 
 const CORE_ASSETS = [
   './',
