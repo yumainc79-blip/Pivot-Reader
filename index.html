@@ -201,8 +201,6 @@
 
     .file-input { display: none; }
 
-    .supported { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-
     .pill {
       padding: 8px 11px;
       border-radius: 999px;
@@ -690,24 +688,11 @@
         <div class="upload-area">
           <input id="fileInput" class="file-input" type="file" accept=".epub,.pdf,.txt,text/plain,application/epub+zip,application/pdf" />
           <button id="chooseFileBtn" class="primary-btn" type="button">Carica nuovo EPUB / PDF / TXT</button>
-          <button id="togglePasteBtn" class="secondary-btn" type="button">Oppure incolla testo</button>
-
-          <div id="pasteBox" class="paste-box">
-            <textarea id="pasteText" placeholder="Incolla qui il testo da leggere..."></textarea>
-            <button id="startPastedBtn" class="secondary-btn" type="button">Salva e avvia testo incollato</button>
-          </div>
 
           <div id="importReport" class="import-report" aria-live="polite">
             <div id="importReportTitle" class="import-report-title"></div>
             <div id="importReportMeta" class="import-report-meta"></div>
             <div id="importReportWarning" class="import-report-warning"></div>
-          </div>
-
-          <div class="supported" aria-label="Formati supportati">
-            <span class="pill">EPUB senza DRM</span>
-            <span class="pill">PDF testuale</span>
-            <span class="pill">TXT</span>
-            <span class="pill">libreria locale</span>
           </div>
         </div>
 
@@ -722,7 +707,7 @@
           </div>
         </div>
 
-        <p class="note">I libri vengono salvati solo nel browser tramite IndexedDB. Non vengono caricati su server. Se cancelli i dati del sito, perdi la libreria locale.</p>
+        <p class="note">I libri vengono salvati solo nel browser tramite IndexedDB. Non vengono caricati su server. Se cancelli i dati del sito, perdi i libri salvati.</p>
         <div id="homeError" class="error-box"></div>
       </div>
     </section>
@@ -848,7 +833,7 @@
         USE_IMPORT_WIZARD_V1: true,
         USE_KPI_DASHBOARD_V1: true,
       };
-      const SAMPLE_TEXT = 'Questo è un esempio di lettura rapida. Carica un EPUB, un PDF testuale oppure incolla un brano. La lettera rossa resta al centro e aiuta l’occhio ad agganciarsi alla parola.';
+      const SAMPLE_TEXT = 'Questo è un esempio di lettura rapida. Carica un file e riprendi da dove eri arrivato. La lettera rossa resta al centro e aiuta l’occhio ad agganciarsi alla parola.';
 
       const els = {
         homeScreen: $('homeScreen'), bookScreen: $('bookScreen'), loadingScreen: $('loadingScreen'), readerScreen: $('readerScreen'),
@@ -923,12 +908,14 @@
         els.chooseFileBtn.addEventListener('click', () => els.fileInput.click());
         els.fileInput.addEventListener('change', handleFileInput);
 
-        els.togglePasteBtn.addEventListener('click', () => {
-          els.pasteBox.classList.toggle('active');
-          if (els.pasteBox.classList.contains('active')) els.pasteText.focus();
-        });
+        if (els.togglePasteBtn) {
+          els.togglePasteBtn.addEventListener('click', () => {
+            els.pasteBox.classList.toggle('active');
+            if (els.pasteBox.classList.contains('active')) els.pasteText.focus();
+          });
+        }
 
-        els.startPastedBtn.addEventListener('click', handlePastedText);
+        if (els.startPastedBtn) els.startPastedBtn.addEventListener('click', handlePastedText);
         els.homeWpm.addEventListener('input', (ev) => setWpm(Number(ev.target.value)));
         els.readerWpm.addEventListener('input', (ev) => setWpm(Number(ev.target.value)));
         els.homeSize.addEventListener('input', (ev) => setFontSize(Number(ev.target.value)));
@@ -1081,7 +1068,7 @@
       }
 
       function showImportFallback(message) {
-        showError(`${message} Puoi riprovare con un TXT/EPUB senza DRM oppure usare "Oppure incolla testo".`);
+        showError(`${message} Puoi riprovare caricando un altro file.`);
         if (els.pasteBox) els.pasteBox.classList.add('active');
         if (els.pasteText) els.pasteText.focus();
       }

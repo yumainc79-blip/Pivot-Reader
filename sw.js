@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pivot-reader-v13-text-export';
+const CACHE_NAME = 'pivot-reader-v14-clean-upload-ui';
 
 const CORE_ASSETS = [
   './',
