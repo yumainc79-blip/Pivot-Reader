@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pivot-reader-v11-chapter-detect';
+const CACHE_NAME = 'pivot-reader-v12-toc-import';
 
 const CORE_ASSETS = [
   './',

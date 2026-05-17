@@ -1110,9 +1110,59 @@
         const pageChapters = rawPages
           .map((raw, index) => ({ title: `Pagina ${index + 1}`, text: cleanBookText(raw, { repeatedLines }) }))
           .filter((chapter) => chapter.text.trim());
+        const outlineChapters = await getPdfOutlineChapters(pdf, rawPages, repeatedLines);
         const detectedChapters = detectChaptersFromText(rawPages.join('\n\n'));
-        const chapters = detectedChapters.length > 1 ? detectedChapters : pageChapters;
+        const chapters = outlineChapters.length > 1 ? outlineChapters : detectedChapters.length > 1 ? detectedChapters : pageChapters;
         return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'pdf', chapters };
+      }
+
+      async function getPdfOutlineChapters(pdf, rawPages, repeatedLines) {
+        if (typeof pdf.getOutline !== 'function') return [];
+        let outline = [];
+        try { outline = await pdf.getOutline(); } catch (_) { return []; }
+        if (!outline || !outline.length) return [];
+
+        const entries = [];
+        await collectPdfOutlineEntries(pdf, outline, entries);
+        const unique = [];
+        const seenPages = new Set();
+        entries
+          .filter((entry) => entry.page >= 1 && entry.page <= rawPages.length && !isBadChapterTitle(entry.title))
+          .sort((a, b) => a.page - b.page)
+          .forEach((entry) => {
+            if (seenPages.has(entry.page)) return;
+            seenPages.add(entry.page);
+            unique.push(entry);
+          });
+
+        if (unique.length < 2) return [];
+        return unique.map((entry, index) => {
+          const next = unique[index + 1];
+          const start = entry.page - 1;
+          const end = next ? next.page - 1 : rawPages.length;
+          const text = cleanBookText(rawPages.slice(start, end).join('\n\n'), { repeatedLines });
+          return { title: entry.title, text };
+        }).filter((chapter) => chapter.text.trim());
+      }
+
+      async function collectPdfOutlineEntries(pdf, items, entries) {
+        for (const item of items || []) {
+          const page = await resolvePdfDestinationPage(pdf, item.dest);
+          const title = normalizeText(item.title || '');
+          if (page && title) entries.push({ title, page });
+          if (item.items && item.items.length) await collectPdfOutlineEntries(pdf, item.items, entries);
+        }
+      }
+
+      async function resolvePdfDestinationPage(pdf, dest) {
+        try {
+          const destination = typeof dest === 'string' ? await pdf.getDestination(dest) : dest;
+          if (!destination || !destination[0]) return 0;
+          const pageIndex = await pdf.getPageIndex(destination[0]);
+          return pageIndex + 1;
+        } catch (_) {
+          return 0;
+        }
       }
 
       function itemsToText(items) {
@@ -1145,8 +1195,10 @@
           const html = await entry.async('text');
           const parsed = htmlToTextAndTitle(html);
           if (parsed.text.trim()) {
+            const tocEntries = epubInfo.tocEntries.filter((entry) => entry.path === path);
             const tocTitle = epubInfo.titleByPath[path] || epubInfo.titleByPath[stripEpubAnchor(path)] || '';
-            const splitChapters = detectChaptersFromText(parsed.rawText || parsed.text);
+            const tocChapters = htmlToChaptersByToc(html, tocEntries);
+            const splitChapters = tocChapters.length > 1 ? tocChapters : detectChaptersFromText(parsed.rawText || parsed.text);
             if (splitChapters.length > 1) {
               splitChapters.forEach((chapter) => chapters.push(chapter));
             } else {
@@ -1165,7 +1217,7 @@
       }
 
       async function getEpubInfo(zip) {
-        const result = { title: '', author: '', paths: [], titleByPath: {} };
+        const result = { title: '', author: '', paths: [], titleByPath: {}, tocEntries: [] };
         try {
           const container = await zip.file('META-INF/container.xml')?.async('text');
           if (!container) return result;
@@ -1204,7 +1256,11 @@
           );
           if (ncxItem) {
             const ncxText = await zip.file(ncxItem.path)?.async('text');
-            if (ncxText) Object.assign(result.titleByPath, parseNcxTitles(ncxText, base));
+            if (ncxText) {
+              const toc = parseNcxTitles(ncxText, base);
+              Object.assign(result.titleByPath, toc.titleByPath);
+              result.tocEntries.push(...toc.entries);
+            }
           }
 
           const navItem = manifestItems.find((item) =>
@@ -1212,39 +1268,62 @@
           );
           if (navItem) {
             const navText = await zip.file(navItem.path)?.async('text');
-            if (navText) Object.assign(result.titleByPath, parseNavTitles(navText, base));
+            if (navText) {
+              const toc = parseNavTitles(navText, base);
+              Object.assign(result.titleByPath, toc.titleByPath);
+              result.tocEntries.push(...toc.entries);
+            }
           }
+          result.tocEntries = dedupeTocEntries(result.tocEntries);
         } catch (error) {
           console.warn('EPUB info fallback:', error);
         }
         return result;
       }
 
-      function normalizeEpubHref(base, href) {
-        const cleanHref = stripEpubAnchor(String(href || ''));
+      function normalizeEpubHref(base, href, options = {}) {
+        const rawHref = String(href || '');
+        const cleanHref = stripEpubAnchor(rawHref);
         let decoded = cleanHref;
         try { decoded = decodeURIComponent(cleanHref); } catch (_) {}
-        return normalizePath(base + decoded);
+        const path = normalizePath(base + decoded);
+        if (!options.keepAnchor) return path;
+        const anchor = extractEpubAnchor(rawHref);
+        return anchor ? `${path}#${anchor}` : path;
       }
 
       function stripEpubAnchor(path) {
         return String(path || '').split('#')[0].split('?')[0];
       }
 
+      function extractEpubAnchor(path) {
+        const hash = String(path || '').split('#')[1] || '';
+        if (!hash) return '';
+        const anchor = hash.split('?')[0];
+        try { return decodeURIComponent(anchor); } catch (_) { return anchor; }
+      }
+
       function parseNcxTitles(ncxText, base) {
-        const map = {};
+        const titleByPath = {};
+        const entries = [];
         const doc = new DOMParser().parseFromString(ncxText, 'application/xml');
         doc.querySelectorAll('navPoint').forEach((point) => {
           const src = point.querySelector('content')?.getAttribute('src') || '';
           const label = normalizeText(point.querySelector('navLabel text')?.textContent || '');
           if (!src || isBadChapterTitle(label)) return;
-          map[normalizeEpubHref(base, src)] = label;
+          const href = normalizeEpubHref(base, src, { keepAnchor: true });
+          const path = stripEpubAnchor(href);
+          const anchor = extractEpubAnchor(href);
+          titleByPath[href] = label;
+          titleByPath[path] = titleByPath[path] || label;
+          entries.push({ href, path, anchor, title: label });
         });
-        return map;
+        return { titleByPath, entries };
       }
 
       function parseNavTitles(navText, base) {
-        const map = {};
+        const titleByPath = {};
+        const entries = [];
         const doc = new DOMParser().parseFromString(navText, 'text/html');
         const navs = [...doc.querySelectorAll('nav')];
         const tocNav = navs.find((nav) => /toc|contents/i.test(nav.getAttribute('epub:type') || nav.getAttribute('type') || nav.getAttribute('role') || '')) || navs[0] || doc;
@@ -1252,9 +1331,24 @@
           const href = link.getAttribute('href') || '';
           const title = normalizeText(link.textContent || '');
           if (!href || isBadChapterTitle(title)) return;
-          map[normalizeEpubHref(base, href)] = title;
+          const normalizedHref = normalizeEpubHref(base, href, { keepAnchor: true });
+          const path = stripEpubAnchor(normalizedHref);
+          const anchor = extractEpubAnchor(normalizedHref);
+          titleByPath[normalizedHref] = title;
+          titleByPath[path] = titleByPath[path] || title;
+          entries.push({ href: normalizedHref, path, anchor, title });
         });
-        return map;
+        return { titleByPath, entries };
+      }
+
+      function dedupeTocEntries(entries) {
+        const seen = new Set();
+        return entries.filter((entry) => {
+          const key = `${entry.href}|${entry.title}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       }
 
       function isBadChapterTitle(title) {
@@ -1297,6 +1391,43 @@
         doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, blockquote, section').forEach((el) => el.appendChild(doc.createTextNode('\n')));
         const rawText = doc.body?.textContent || '';
         return { title, rawText, text: cleanBookText(rawText) };
+      }
+
+      function htmlToChaptersByToc(html, tocEntries) {
+        const usableEntries = (tocEntries || []).filter((entry) => entry.anchor && !isBadChapterTitle(entry.title));
+        if (usableEntries.length < 2) return [];
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('script, style, nav, svg, audio, video').forEach((el) => el.remove());
+
+        const placed = [];
+        usableEntries.forEach((entry, index) => {
+          const target = findElementByAnchor(doc, entry.anchor);
+          if (!target) return;
+          const marker = `\n@@PIVOT_TOC_${index}@@\n`;
+          target.parentNode?.insertBefore(doc.createTextNode(marker), target);
+          placed.push({ marker: marker.trim(), title: entry.title });
+        });
+        if (placed.length < 2) return [];
+
+        doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+        doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, blockquote, section').forEach((el) => el.appendChild(doc.createTextNode('\n')));
+        const rawText = doc.body?.textContent || '';
+        const chapters = [];
+        placed.forEach((entry, index) => {
+          const start = rawText.indexOf(entry.marker);
+          if (start < 0) return;
+          const next = placed[index + 1];
+          const end = next ? rawText.indexOf(next.marker, start + entry.marker.length) : rawText.length;
+          const slice = rawText.slice(start + entry.marker.length, end > start ? end : rawText.length);
+          const text = cleanBookText(slice);
+          if (text) chapters.push({ title: entry.title, text });
+        });
+        return chapters;
+      }
+
+      function findElementByAnchor(doc, anchor) {
+        return [...doc.querySelectorAll('[id], [name]')]
+          .find((el) => el.getAttribute('id') === anchor || el.getAttribute('name') === anchor) || null;
       }
 
       function buildTextChapters(text, wordsPerBlock) {
