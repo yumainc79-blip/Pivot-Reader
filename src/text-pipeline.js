@@ -116,6 +116,9 @@
   }
 
   function buildTextChapters(text, wordsPerBlock = 2200) {
+    const indexed = detectIndexedChaptersFromText(text);
+    if (indexed.length > 1) return indexed;
+
     const detected = detectChaptersFromText(text);
     if (detected.length > 1) return detected;
 
@@ -125,6 +128,172 @@
       chapters.push({ title: `Blocco ${chapters.length + 1}`, text: words.slice(i, i + wordsPerBlock).join(' ') });
     }
     return chapters;
+  }
+
+  function detectIndexedChaptersFromText(text, options = {}) {
+    const entries = extractTocEntriesFromText(text, options);
+    if (entries.length < (Number(options.minEntries) || 4)) return [];
+    return buildChaptersFromToc(text, entries, options);
+  }
+
+  function extractTocEntriesFromText(text, options = {}) {
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    const start = lines.findIndex((line) => /^(indice|contenuti|sommario|contents|table of contents)$/i.test(normalizeTextLine(line)));
+    if (start < 0) return [];
+
+    const maxLines = Number(options.maxTocLines) || 260;
+    const entries = [];
+    let current = null;
+
+    for (let i = start + 1; i < Math.min(lines.length, start + maxLines); i += 1) {
+      const line = normalizeTextLine(lines[i]);
+      if (!line) continue;
+      if (/^\d{1,4}$/.test(line)) continue;
+
+      const introMatch = line.match(/^(introduzione|introduction|prefazione|preface|prologo|prologue)\s+(\d{1,4})$/i);
+      const numberedMatch = line.match(/^(\d{1,3})\s*[.)]\s+(.+)$/);
+
+      if (introMatch) {
+        current = { number: 0, title: normalizeChapterTitle(introMatch[1]), page: Number(introMatch[2]) || 0, lineIndex: i };
+        entries.push(current);
+        continue;
+      }
+
+      if (numberedMatch) {
+        current = {
+          number: Number(numberedMatch[1]),
+          title: cleanTocTitle(numberedMatch[2]),
+          page: extractTrailingPageNumber(numberedMatch[2]),
+          lineIndex: i,
+        };
+        entries.push(current);
+        continue;
+      }
+
+      if (entries.length >= 4 && looksLikeBodyAfterToc(line, entries[0])) break;
+
+      if (current && shouldContinueTocTitle(line)) {
+        current.title = cleanTocTitle(`${current.title} ${line}`);
+        current.lineIndex = i;
+      }
+    }
+
+    return entries
+      .map((entry) => ({ ...entry, title: cleanTocTitle(entry.title) }))
+      .filter((entry) => entry.title && (entry.number === 0 || entry.number > 0));
+  }
+
+  function buildChaptersFromToc(text, entries, options = {}) {
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    const tocStart = lines.findIndex((line) => /^(indice|contenuti|sommario|contents|table of contents)$/i.test(normalizeTextLine(line)));
+    const tocEnd = entries.reduce((max, entry) => Math.max(max, Number(entry.lineIndex) || 0), tocStart);
+    const searchStart = Math.max(0, tocEnd + 1);
+    const matches = [];
+    let cursor = searchStart;
+
+    for (const entry of entries) {
+      const match = findTocEntryInBody(lines, entry, cursor);
+      if (!match) continue;
+      matches.push({ ...entry, lineIndex: match.lineIndex, endLineIndex: match.endLineIndex });
+      cursor = match.endLineIndex + 1;
+    }
+
+    const minMatchedRatio = Number(options.minMatchedRatio) || 0.45;
+    if (matches.length < 2 || matches.length < Math.ceil(entries.length * minMatchedRatio)) return [];
+
+    const chapters = [];
+    for (let i = 0; i < matches.length; i += 1) {
+      const current = matches[i];
+      const next = matches[i + 1];
+      const start = current.endLineIndex + 1;
+      const end = next ? next.lineIndex : lines.length;
+      const title = current.number > 0 ? `${current.number}. ${current.title}` : current.title;
+      const cleaned = cleanBookText(lines.slice(start, end).join('\n'));
+      if (tokenize(cleaned).length) chapters.push({ title, text: cleaned });
+    }
+    return chapters;
+  }
+
+  function findTocEntryInBody(lines, entry, startIndex) {
+    const needleWords = significantWords(entry.title).slice(0, 8);
+    const numberPattern = entry.number > 0 ? new RegExp(`^${entry.number}\\s*([.)-])?$`) : null;
+    const maxLookAhead = 5;
+
+    for (let i = Math.max(0, startIndex); i < lines.length; i += 1) {
+      const line = normalizeTextLine(lines[i]);
+      if (!line) continue;
+
+      if (entry.number === 0 && normalizedLoose(line).startsWith(normalizedLoose(entry.title))) {
+        return { lineIndex: i, endLineIndex: i };
+      }
+
+      if (entry.number > 0 && numberPattern.test(line)) {
+        const windowText = lines.slice(i, Math.min(lines.length, i + maxLookAhead)).map(normalizeTextLine).join(' ');
+        if (matchesSignificantWords(windowText, needleWords)) {
+          return { lineIndex: i, endLineIndex: Math.min(lines.length - 1, i + 1) };
+        }
+      }
+
+      if (entry.number > 0 && line.match(new RegExp(`^${entry.number}\\s*[.)-]\\s+`))) {
+        const windowText = lines.slice(i, Math.min(lines.length, i + maxLookAhead)).map(normalizeTextLine).join(' ');
+        if (matchesSignificantWords(windowText, needleWords)) return { lineIndex: i, endLineIndex: i };
+      }
+    }
+
+    return null;
+  }
+
+  function cleanTocTitle(title) {
+    return normalizeChapterTitle(String(title || '')
+      .replace(/\s+\.{2,}\s*\d{1,4}$/g, '')
+      .replace(/\s+\d{1,4}$/g, '')
+      .replace(/\s*[-–—]\s*$/g, ''));
+  }
+
+  function extractTrailingPageNumber(text) {
+    const match = String(text || '').match(/\s(\d{1,4})$/);
+    return match ? Number(match[1]) : 0;
+  }
+
+  function shouldContinueTocTitle(line) {
+    const value = normalizeTextLine(line);
+    if (!value || value.length > 110) return false;
+    if (/^(indice|contents|introduzione|introduction)$/i.test(value)) return false;
+    if (/^\d{1,3}\s*[.)]\s+/.test(value)) return false;
+    return /[\p{L}]/u.test(value);
+  }
+
+  function looksLikeBodyAfterToc(line, firstEntry) {
+    const value = normalizedLoose(line);
+    const firstTitle = normalizedLoose(firstEntry && firstEntry.title);
+    return Boolean(firstTitle && value && (value === firstTitle || firstTitle.startsWith(value) || value.startsWith(firstTitle)));
+  }
+
+  function significantWords(text) {
+    const stop = new Set(['che', 'con', 'del', 'della', 'delle', 'degli', 'dei', 'gli', 'per', 'non', 'una', 'uno', 'come', 'cosa', 'cose', 'cui', 'tuo', 'tua', 'tuoi', 'tue', 'the', 'and', 'that', 'your', 'you']);
+    return normalizedLoose(text).split(' ').filter((word) => word.length >= 3 && !stop.has(word));
+  }
+
+  function matchesSignificantWords(text, words) {
+    if (!words.length) return false;
+    const haystack = normalizedLoose(text);
+    const needed = Math.min(words.length, words.length <= 3 ? 2 : 4);
+    let count = 0;
+    for (const word of words) {
+      if (haystack.includes(word)) count += 1;
+      if (count >= needed) return true;
+    }
+    return false;
+  }
+
+  function normalizedLoose(text) {
+    return String(text || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function detectChaptersFromText(text, options = {}) {
@@ -255,6 +424,9 @@
     cleanBookText,
     tokenize,
     buildTextChapters,
+    detectIndexedChaptersFromText,
+    extractTocEntriesFromText,
+    buildChaptersFromToc,
     detectChaptersFromText,
     isChapterHeading,
     createImportReport,

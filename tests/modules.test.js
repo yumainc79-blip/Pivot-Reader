@@ -64,6 +64,40 @@ test('text pipeline detects uppercase chapter markers used by many ebooks', () =
   assert.equal(chapters[1].title, 'CHAPTER TWO - The Door Opens');
 });
 
+test('text pipeline uses a textual index before heading heuristics', () => {
+  const body = 'Questo corpo del capitolo contiene abbastanza testo leggibile per essere salvato correttamente. '.repeat(12);
+  const text = [
+    'Copertina',
+    '',
+    'INDICE',
+    'Introduzione 8',
+    '1. Primo titolo importante',
+    '2. Secondo titolo importante',
+    '3. Terzo titolo importante',
+    '4. Quarto titolo importante',
+    '',
+    'Introduzione',
+    body,
+    '1',
+    'Primo TITOLO importante',
+    body,
+    '2',
+    'Secondo TITOLO importante',
+    body,
+    '3',
+    'Terzo TITOLO importante',
+    body,
+    '4',
+    'Quarto TITOLO importante',
+    body,
+  ].join('\n');
+  const chapters = textPipeline.detectIndexedChaptersFromText(text, { minEntries: 4, minMatchedRatio: 0.5 });
+  assert.equal(chapters.length, 5);
+  assert.equal(chapters[0].title, 'Introduzione');
+  assert.equal(chapters[1].title, '1. Primo titolo importante');
+  assert.equal(chapters[4].title, '4. Quarto titolo importante');
+});
+
 test('chapter engine finds current and adjacent chapters', () => {
   const chapters = [
     { index: 0, startWordIndex: 0, endWordIndex: 9, wordCount: 10 },

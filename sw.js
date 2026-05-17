@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pivot-reader-v0-1-file-export';
+const CACHE_NAME = 'pivot-reader-v0-2-indexed-pdf';
 
 const CORE_ASSETS = [
   './',

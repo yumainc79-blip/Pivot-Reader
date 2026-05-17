@@ -681,7 +681,7 @@
             <div>
               <div class="title-row">
                 <h1>Pivot Reader</h1>
-                <span class="version-badge">v. 0.1</span>
+                <span class="version-badge">v. 0.2</span>
               </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
@@ -841,7 +841,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
-      const APP_VERSION = 'v. 0.1';
+      const APP_VERSION = 'v. 0.2';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -1145,9 +1145,10 @@
         const pageChapters = rawPages
           .map((raw, index) => ({ title: `Pagina ${index + 1}`, text: cleanBookText(raw, { repeatedLines }) }))
           .filter((chapter) => chapter.text.trim());
+        const indexedChapters = detectIndexedChaptersFromText(rawPages.join('\n\n'));
         const outlineChapters = await getPdfOutlineChapters(pdf, rawPages, repeatedLines);
         const detectedChapters = detectChaptersFromText(rawPages.join('\n\n'));
-        const chapters = outlineChapters.length > 1 ? outlineChapters : detectedChapters.length > 1 ? detectedChapters : pageChapters;
+        const chapters = indexedChapters.length > 1 ? indexedChapters : outlineChapters.length > 1 ? outlineChapters : detectedChapters.length > 1 ? detectedChapters : pageChapters;
         return { title: cleanTitle(file.name), author: '', fileName: file.name, format: 'pdf', rawText: rawPages.join('\n\n'), chapters };
       }
 
@@ -1483,6 +1484,13 @@
       function detectChaptersFromText(text) {
         if (FEATURE_FLAGS.USE_TEXT_PIPELINE_V1 && window.PivotTextPipeline?.detectChaptersFromText) {
           return window.PivotTextPipeline.detectChaptersFromText(text);
+        }
+        return [];
+      }
+
+      function detectIndexedChaptersFromText(text) {
+        if (FEATURE_FLAGS.USE_TEXT_PIPELINE_V1 && window.PivotTextPipeline?.detectIndexedChaptersFromText) {
+          return window.PivotTextPipeline.detectIndexedChaptersFromText(text);
         }
         return [];
       }
