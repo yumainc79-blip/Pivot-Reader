@@ -681,7 +681,7 @@
             <div>
               <div class="title-row">
                 <h1>Pivot Reader</h1>
-                <span class="version-badge">v. 0.5</span>
+                <span class="version-badge">v. 0.6</span>
               </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
@@ -841,7 +841,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
-      const APP_VERSION = 'v. 0.5';
+      const APP_VERSION = 'v. 0.6';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -852,6 +852,9 @@
         USE_IMPORT_WIZARD_V1: true,
         USE_KPI_DASHBOARD_V1: true,
       };
+      const GESTURE_HOLD_MS = 120;
+      const GESTURE_SLIDE_BACK_PX = 42;
+      const GESTURE_DOUBLE_TAP_MS = 320;
       const SAMPLE_TEXT = 'Questo è un esempio di lettura rapida. Carica un file e riprendi da dove eri arrivato. La lettera rossa resta al centro e aiuta l’occhio ad agganciarsi alla parola.';
 
       const els = {
@@ -892,6 +895,8 @@
         pivotX: Number(localStorage.getItem('pivotReader.pivotX.v1')) || 40,
         saveTimer: null,
         lastImportReport: null,
+        readerGesture: null,
+        lastReaderTapAt: 0,
       };
 
       init();
@@ -956,7 +961,10 @@
         });
 
         els.settingsBtn.addEventListener('click', () => revealControlsAndPause());
-        els.readerStage.addEventListener('click', handleReaderStageTap);
+        els.readerStage.addEventListener('pointerdown', handleReaderPointerDown);
+        els.readerStage.addEventListener('pointermove', handleReaderPointerMove);
+        els.readerStage.addEventListener('pointerup', handleReaderPointerUp);
+        els.readerStage.addEventListener('pointercancel', handleReaderPointerCancel);
         els.playBtn.addEventListener('click', (ev) => { ev.stopPropagation(); togglePlay(); });
         els.prevBtn.addEventListener('click', () => rewindSentence({ flash: true }));
         els.nextBtn.addEventListener('click', () => moveBy(1));
@@ -2076,6 +2084,100 @@
         }
       }
 
+      function handleReaderPointerDown(ev) {
+        if (!els.readerScreen.classList.contains('active')) return;
+        const target = ev.target;
+        if (target && target.closest && target.closest('.reader-controls, .reader-topbar, button, input, textarea, select, a')) return;
+        if (ev.button !== undefined && ev.button !== 0) return;
+
+        const wasPlaying = state.playing;
+        const gesture = {
+          pointerId: ev.pointerId,
+          startX: ev.clientX,
+          startY: ev.clientY,
+          lastX: ev.clientX,
+          startedAt: Date.now(),
+          wasPlaying,
+          holding: false,
+          movedBack: false,
+          suppressTap: false,
+          holdTimer: null,
+        };
+        state.readerGesture = gesture;
+
+        try { els.readerStage.setPointerCapture(ev.pointerId); } catch (_) {}
+        gesture.holdTimer = setTimeout(() => {
+          if (state.readerGesture !== gesture) return;
+          gesture.holding = true;
+          if (state.playing) pause(false);
+          toggleCleanMode(true);
+        }, GESTURE_HOLD_MS);
+      }
+
+      function handleReaderPointerMove(ev) {
+        const gesture = state.readerGesture;
+        if (!gesture || gesture.pointerId !== ev.pointerId) return;
+        gesture.lastX = ev.clientX;
+        const dx = ev.clientX - gesture.startX;
+        const dy = ev.clientY - gesture.startY;
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) gesture.suppressTap = true;
+
+        if (dx <= -GESTURE_SLIDE_BACK_PX && Math.abs(dx) > Math.abs(dy) * 1.25 && !gesture.movedBack) {
+          gesture.movedBack = true;
+          clearTimeout(gesture.holdTimer);
+          rewindSentence({ keepClean: true, keepPlaying: false, flash: true, forcePrevious: false });
+        }
+      }
+
+      function handleReaderPointerUp(ev) {
+        const gesture = state.readerGesture;
+        if (!gesture || gesture.pointerId !== ev.pointerId) return;
+        clearTimeout(gesture.holdTimer);
+        state.readerGesture = null;
+        try { els.readerStage.releasePointerCapture(ev.pointerId); } catch (_) {}
+
+        const now = Date.now();
+        const elapsed = now - gesture.startedAt;
+        const isTap = !gesture.suppressTap && elapsed < GESTURE_HOLD_MS + 80;
+
+        if (gesture.holding && gesture.wasPlaying && !gesture.movedBack) {
+          state.playing = true;
+          toggleCleanMode(true);
+          updateControls();
+          scheduleNext();
+          return;
+        }
+
+        if (isTap) {
+          if (now - state.lastReaderTapAt <= GESTURE_DOUBLE_TAP_MS) {
+            state.lastReaderTapAt = 0;
+            rewindSentence({ keepClean: true, keepPlaying: state.playing, flash: true, forcePrevious: true });
+            return;
+          }
+          state.lastReaderTapAt = now;
+          handleReaderStageTap(ev);
+          return;
+        }
+
+        if (!state.playing) {
+          updateControls();
+          queuePositionSave();
+        }
+      }
+
+      function handleReaderPointerCancel(ev) {
+        const gesture = state.readerGesture;
+        if (!gesture || gesture.pointerId !== ev.pointerId) return;
+        clearTimeout(gesture.holdTimer);
+        state.readerGesture = null;
+        if (gesture.holding && gesture.wasPlaying && !gesture.movedBack) {
+          state.playing = true;
+          toggleCleanMode(true);
+          updateControls();
+          scheduleNext();
+        }
+      }
+
       function queuePositionSave() {
         if (FEATURE_FLAGS.USE_READER_CORE_V1 && window.PivotReaderCore?.queuePositionSave) {
           window.PivotReaderCore.queuePositionSave(state, savePositionNow, 500);
@@ -2233,13 +2335,13 @@
       }
 
       function rewindSentence(options = {}) {
-        const { keepClean = false, keepPlaying = false, flash = false } = options;
+        const { keepClean = false, keepPlaying = false, flash = false, forcePrevious = false } = options;
         const wasPlaying = state.playing;
         clearTimeout(state.timer);
         state.timer = null;
 
         const currentStart = currentSentenceStart(state.index);
-        const target = state.index === currentStart ? sentenceStartBefore(state.index) : currentStart;
+        const target = forcePrevious || state.index === currentStart ? sentenceStartBefore(state.index) : currentStart;
         state.index = clamp(target, 0, Math.max(0, state.words.length - 1));
         renderWord();
         queuePositionSave();

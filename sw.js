@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pivot-reader-v0-5-epub-chapter-titles';
+const CACHE_NAME = 'pivot-reader-v0-6-reader-gestures';
 
 const CORE_ASSETS = [
   './',
