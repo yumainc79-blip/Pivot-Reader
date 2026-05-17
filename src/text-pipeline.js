@@ -16,7 +16,7 @@
   }
 
   function normalizeText(text) {
-    return String(text || '')
+    return repairTextExtractionArtifacts(String(text || ''))
       .replace(/\u00ad/g, '')
       .replace(/[\u201c\u201d]/g, '"')
       .replace(/[\u2018\u2019]/g, "'")
@@ -25,6 +25,15 @@
       .replace(/\n{3,}/g, '\n\n')
       .replace(/[ \t]{2,}/g, ' ')
       .trim();
+  }
+
+  function repairTextExtractionArtifacts(text) {
+    return String(text || '')
+      .replace(/\bPbrbes\b/g, 'Forbes')
+      .replace(/\bBrìanna\b/g, 'Brianna')
+      .replace(/\bintcriore\b/g, 'interiore')
+      .replace(/\bintcriori\b/g, 'interiori')
+      .replace(/thè/g, 'the');
   }
 
   function findRepeatedNoiseLines(text) {
@@ -419,6 +428,7 @@
   return {
     normalizeTextLine,
     normalizeText,
+    repairTextExtractionArtifacts,
     findRepeatedNoiseLines,
     isNoiseLine,
     cleanBookText,

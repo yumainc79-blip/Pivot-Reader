@@ -98,6 +98,11 @@ test('text pipeline uses a textual index before heading heuristics', () => {
   assert.equal(chapters[4].title, '4. Quarto titolo importante');
 });
 
+test('text pipeline repairs known PDF text-layer artifacts conservatively', () => {
+  const text = textPipeline.normalizeText('Pbrbes, Brìanna Wiest, pace intcriore, The Obstacle Is thè Way');
+  assert.equal(text, 'Forbes, Brianna Wiest, pace interiore, The Obstacle Is the Way');
+});
+
 test('chapter engine finds current and adjacent chapters', () => {
   const chapters = [
     { index: 0, startWordIndex: 0, endWordIndex: 9, wordCount: 10 },

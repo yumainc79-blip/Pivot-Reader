@@ -681,7 +681,7 @@
             <div>
               <div class="title-row">
                 <h1>Pivot Reader</h1>
-                <span class="version-badge">v. 0.2</span>
+                <span class="version-badge">v. 0.3</span>
               </div>
               <p class="subtitle">Carica EPUB, PDF o TXT. Poi li ritrovi nella cronologia locale e riprendi da dove eri arrivato.</p>
             </div>
@@ -841,7 +841,7 @@
       'use strict';
 
       const $ = (id) => document.getElementById(id);
-      const APP_VERSION = 'v. 0.2';
+      const APP_VERSION = 'v. 0.3';
       const DB_NAME = 'PivotReaderDB';
       const DB_VERSION = 1;
       const FEATURE_FLAGS = {
@@ -1202,17 +1202,34 @@
       }
 
       function itemsToText(items) {
-        let out = '';
-        let lastY = null;
-        for (const item of items) {
+        const rows = [];
+        for (const item of items || []) {
           const text = item.str || '';
-          const y = item.transform ? Math.round(item.transform[5]) : null;
-          if (lastY !== null && y !== null && Math.abs(y - lastY) > 5) out += '\n';
-          else if (out && !out.endsWith(' ') && !out.endsWith('\n')) out += ' ';
-          out += text;
-          lastY = y;
+          if (!text) continue;
+          const transform = item.transform || [];
+          const x = Number(transform[4]) || 0;
+          const y = Math.round(Number(transform[5]) || 0);
+          const width = Number(item.width) || 0;
+          const fontSize = Math.max(1, Math.abs(Number(transform[0]) || Number(item.height) || 10));
+          let row = rows.find((candidate) => Math.abs(candidate.y - y) <= 3);
+          if (!row) {
+            row = { y, items: [] };
+            rows.push(row);
+          }
+          row.items.push({ text, x, endX: x + width, fontSize });
         }
-        return out;
+
+        return rows
+          .sort((a, b) => b.y - a.y)
+          .map((row) => row.items.sort((a, b) => a.x - b.x).reduce((line, item, index, rowItems) => {
+            const previous = rowItems[index - 1];
+            if (!previous) return item.text;
+            const gap = item.x - previous.endX;
+            const threshold = Math.max(1.8, Math.min(previous.fontSize, item.fontSize) * 0.22);
+            const needsSpace = gap > threshold && !/[\s([{«"“]$/.test(line) && !/^[,.;:!?…)\]}»"”]/.test(item.text);
+            return `${line}${needsSpace ? ' ' : ''}${item.text}`;
+          }, ''))
+          .join('\n');
       }
 
       async function extractEpubBook(file) {
